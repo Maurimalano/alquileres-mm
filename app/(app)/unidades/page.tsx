@@ -39,7 +39,9 @@ export default function UnidadesPage() {
         supabase.from('propiedades').select('id, nombre').order('nombre')
       ])
 
-      setUnidades(sortUnidades(unidadesRes.data ?? []))
+      const raw = unidadesRes.data ?? []
+      console.log('[sortUnidades] valores numero (raw):', raw.slice(0, 10).map(u => ({ numero: u.numero, prop: (u as any).propiedades?.nombre })))
+      setUnidades(sortUnidades(raw))
       setPropiedades(propiedadesRes.data ?? [])
       setLoading(false)
     }
