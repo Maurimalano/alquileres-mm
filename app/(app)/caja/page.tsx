@@ -45,6 +45,19 @@ function ResumenCards({
   )
 }
 
+function getNombreUnidades(contrato: any): string {
+  const cus: any[] = contrato?.contrato_unidades ?? []
+  const nums = cus.map((cu) => cu.unidades?.numero).filter(Boolean)
+  if (nums.length > 0) return nums.join(' / ')
+  return contrato?.unidades?.numero ?? '—'
+}
+
+function getNombreInquilino(contrato: any): string {
+  const inq = contrato?.inquilinos
+  if (!inq) return '—'
+  return `${inq.nombre} ${inq.apellido}`
+}
+
 export default async function CajaPage({
   searchParams,
 }: {
@@ -54,6 +67,25 @@ export default async function CajaPage({
   const supabase = await createClient()
   const today = new Date()
   const periodoActivo = periodo ?? `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+
+  // ── Caja diaria ───────────────────────────────────────────
+  const { data: pagosHoy } = await supabase
+    .from('pagos')
+    .select(`
+      id, monto, forma_pago, recibo_numero, fecha_pago, periodo,
+      contratos(
+        inquilinos(nombre, apellido),
+        contrato_unidades(unidades(numero)),
+        unidades(numero)
+      )
+    `)
+    .eq('estado', 'pagado')
+    .eq('fecha_pago', todayStr)
+    .order('created_at', { ascending: false })
+
+  const diarEfectivo = (pagosHoy ?? []).filter((p) => p.forma_pago === 'efectivo').reduce((a, p) => a + p.monto, 0)
+  const diarTransfer = (pagosHoy ?? []).filter((p) => p.forma_pago === 'transferencia').reduce((a, p) => a + p.monto, 0)
 
   // ── Alquileres ────────────────────────────────────────────
   const { data: pagos } = await supabase
@@ -96,12 +128,56 @@ export default async function CajaPage({
         <CajaFiltro current={periodoActivo} />
       </div>
 
-      <Tabs defaultValue="alquileres">
+      <Tabs defaultValue="hoy">
         <TabsList>
+          <TabsTrigger value="hoy">Hoy</TabsTrigger>
           <TabsTrigger value="alquileres">Alquileres</TabsTrigger>
           <TabsTrigger value="servicios">Servicios</TabsTrigger>
           <TabsTrigger value="expensas">Expensas</TabsTrigger>
         </TabsList>
+
+        {/* ── Caja diaria ── */}
+        <TabsContent value="hoy" className="mt-4 space-y-4">
+          <ResumenCards efectivo={diarEfectivo} transferencia={diarTransfer} label="cobrado hoy" />
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Recibo</TableHead>
+                  <TableHead>Unidad</TableHead>
+                  <TableHead>Inquilino</TableHead>
+                  <TableHead>Período</TableHead>
+                  <TableHead className="text-right">Monto</TableHead>
+                  <TableHead>Forma</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(pagosHoy ?? []).length > 0 ? (
+                  pagosHoy!.map((p) => (
+                    <TableRow key={p.id}>
+                      <TableCell className="font-mono text-sm">
+                        {p.recibo_numero ?? <span className="text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell>{getNombreUnidades((p as any).contratos)}</TableCell>
+                      <TableCell>{getNombreInquilino((p as any).contratos)}</TableCell>
+                      <TableCell>{p.periodo}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(p.monto)}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="capitalize">{p.forma_pago}</Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={6} className="h-20 text-center text-muted-foreground">
+                      Sin cobros registrados hoy.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
 
         {/* ── Alquileres ── */}
         <TabsContent value="alquileres" className="mt-4 space-y-4">
