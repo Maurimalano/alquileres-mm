@@ -12,6 +12,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { Switch } from '@/components/ui/switch'
 import { NuevaUnidadDialog } from './nueva-unidad-dialog'
 import { UnidadDetalle } from './unidad-detalle'
 import type { Unidad } from '@/types/database'
@@ -43,6 +44,13 @@ export default function UnidadesPage() {
     }
     fetchData()
   }, [])
+
+  async function toggleEstado(id: string, estadoActual: string) {
+    const nuevoEstado = estadoActual === 'ocupada' ? 'disponible' : 'ocupada'
+    setUnidades((prev) => prev.map((u) => u.id === id ? { ...u, estado: nuevoEstado as Unidad['estado'] } : u))
+    const supabase = createClient()
+    await supabase.from('unidades').update({ estado: nuevoEstado }).eq('id', id)
+  }
 
   if (loading) {
     return <div>Cargando...</div>
@@ -89,8 +97,20 @@ export default function UnidadesPage() {
                     <TableCell>{u.tipo ?? '—'}</TableCell>
                     <TableCell>{u.piso ?? '—'}</TableCell>
                     <TableCell>{u.superficie ? `${u.superficie} m²` : '—'}</TableCell>
-                    <TableCell>
-                      <Badge variant={badge.variant}>{badge.label}</Badge>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      {u.estado === 'mantenimiento' ? (
+                        <Badge variant={badge.variant}>{badge.label}</Badge>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={u.estado === 'ocupada'}
+                            onCheckedChange={() => toggleEstado(u.id, u.estado)}
+                          />
+                          <span className="text-sm text-muted-foreground">
+                            {u.estado === 'ocupada' ? 'Ocupada' : 'Disponible'}
+                          </span>
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell onClick={e => e.stopPropagation()}>
                       <UnidadDetalle

@@ -121,6 +121,11 @@ export function NuevoContratoDialog({ unidades, inquilinos }: Props) {
           monto_mensual: Number(u.monto_mensual),
         }))
       )
+
+      await supabase
+        .from('unidades')
+        .update({ estado: 'ocupada' })
+        .in('id', unidadesForm.map((u) => u.unidad_id))
     }
 
     registrarAuditoria('Crear contrato', { inquilino_id: form.inquilino_id, monto_mensual: totalMensual })

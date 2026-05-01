@@ -123,6 +123,9 @@ export function EditContratoDialog({ unidades, inquilinos, contrato, open, onOpe
     const supabase = createClient()
 
     if (isEdit) {
+      const oldUnitIds: string[] = (contrato.contrato_unidades ?? []).map((cu: any) => cu.unidad_id as string)
+      const newUnitIds = unidadesForm.map((u) => u.unidad_id)
+
       // Update contrato
       const { error: contratoError } = await supabase
         .from('contratos')
@@ -158,6 +161,24 @@ export function EditContratoDialog({ unidades, inquilinos, contrato, open, onOpe
           monto_mensual: Number(u.monto_mensual),
         }))
       )
+
+      // Marcar nuevas unidades como ocupada
+      if (newUnitIds.length > 0) {
+        await supabase.from('unidades').update({ estado: 'ocupada' }).in('id', newUnitIds)
+      }
+
+      // Liberar unidades quitadas del contrato que no tengan otro contrato activo
+      const removedIds = oldUnitIds.filter((id) => !newUnitIds.includes(id))
+      for (const unitId of removedIds) {
+        const { data: otrosContratos } = await supabase
+          .from('contrato_unidades')
+          .select('contrato_id, contratos!inner(estado)')
+          .eq('unidad_id', unitId)
+          .eq('contratos.estado', 'activo')
+        if (!otrosContratos || otrosContratos.length === 0) {
+          await supabase.from('unidades').update({ estado: 'disponible' }).eq('id', unitId)
+        }
+      }
     } else {
       // Insert new
       const { data: newContrato } = await supabase
@@ -186,6 +207,11 @@ export function EditContratoDialog({ unidades, inquilinos, contrato, open, onOpe
             monto_mensual: Number(u.monto_mensual),
           }))
         )
+
+        await supabase
+          .from('unidades')
+          .update({ estado: 'ocupada' })
+          .in('id', unidadesForm.map((u) => u.unidad_id))
       }
     }
 

@@ -15,6 +15,8 @@ import { Badge } from '@/components/ui/badge'
 import { NuevoContratoDialog } from './nuevo-contrato-dialog'
 import { AjustarCanonDialog } from './ajustar-canon-dialog'
 import { AjustarIpcDialog } from './ajustar-ipc-dialog'
+import { ContratoVencimientoDialog } from './contrato-vencimiento-dialog'
+import { EditContratoDialog } from './edit-contrato-dialog'
 import type { Contrato } from '@/types/database'
 
 const estadoBadge: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' }> = {
@@ -101,6 +103,8 @@ export default function ContratosPage() {
   const [unidades, setUnidades] = useState<any[]>([])
   const [inquilinos, setInquilinos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [vencimientoContrato, setVencimientoContrato] = useState<any>(null)
+  const [showRenovarDialog, setShowRenovarDialog] = useState(false)
 
   useEffect(() => {
     async function fetchData() {
@@ -109,7 +113,7 @@ export default function ContratosPage() {
       const [contratosRes, unidadesRes, inquilinosRes] = await Promise.all([
         supabase
           .from('contratos')
-          .select('*, contrato_unidades(id, monto_mensual, unidades(numero, propiedades(nombre))), inquilinos(nombre, apellido), contrato_ajuste_historial(fecha)')
+          .select('*, contrato_unidades(id, unidad_id, monto_mensual, unidades(id, numero, propiedades(nombre))), inquilinos(nombre, apellido), contrato_ajuste_historial(fecha)')
           .order('created_at', { ascending: false }),
         supabase
           .from('unidades')
@@ -120,6 +124,12 @@ export default function ContratosPage() {
           .select('id, nombre, apellido')
           .order('apellido')
       ])
+
+      const today = new Date().toISOString().split('T')[0]
+      const vencido = (contratosRes.data ?? []).find(
+        (c: any) => c.estado === 'activo' && c.fecha_fin <= today
+      )
+      if (vencido) setVencimientoContrato(vencido)
 
       setContratos(contratosRes.data ?? [])
       setUnidades(unidadesRes.data ?? [])
@@ -270,6 +280,27 @@ export default function ContratosPage() {
           </TableBody>
         </Table>
       </div>
+
+      {vencimientoContrato && !showRenovarDialog && (
+        <ContratoVencimientoDialog
+          contrato={vencimientoContrato}
+          onRenovar={() => setShowRenovarDialog(true)}
+          onClose={() => setVencimientoContrato(null)}
+        />
+      )}
+
+      {showRenovarDialog && vencimientoContrato && (
+        <EditContratoDialog
+          unidades={unidades}
+          inquilinos={inquilinos}
+          contrato={vencimientoContrato}
+          open={showRenovarDialog}
+          onOpenChange={(v) => {
+            setShowRenovarDialog(v)
+            if (!v) setVencimientoContrato(null)
+          }}
+        />
+      )}
     </div>
   )
 }
