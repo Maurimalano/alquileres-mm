@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep *)",
+      "Bash(npm install *)",
+      "Bash(npx shadcn@latest init --yes)",
+      "Bash(npx shadcn@latest init)",
+      "Bash(yes \"\")",
+      "Bash(npx shadcn@latest add sidebar card badge table input label select dialog dropdown-menu separator avatar tabs)",
+      "Bash(npm run *)",
+      "Bash(npx shadcn@latest add scroll-area textarea)",
+      "Bash(xargs ls *)",
+      "Bash(npx tsc *)",
+      "Bash(npx next *)",
+      "Bash(curl -s --max-time 10 \"https://api.argentinadatos.com/v1/finanzas/indices/inflacion\")",
+      "Bash(curl -v --max-time 10 \"https://api.argentinadatos.com/v1/finanzas/indices/inflacion\")",
+      "Bash(curl -s --insecure --max-time 10 \"https://api.argentinadatos.com/v1/finanzas/indices/inflacion\")",
+      "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); print\\(json.dumps\\(data[-6:], indent=2\\)\\)\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const a=JSON.parse\\(d\\);console.log\\(JSON.stringify\\(a.slice\\(-6\\),null,2\\)\\)}\\)\")",
+      "Bash(node -e ' *)",
+      "Bash(taskkill /PID 33384 /F)",
+      "PowerShell(Stop-Process *2)",
+      "Bash(Remove-Item -Recurse -Force \"C:\\\\Users\\\\mmala\\\\Downloads\\\\alquileresmm\\\\alquileres-mm\\\\app\\\\\\(app\\)\\\\servicios\")",
+      "Bash(Remove-Item -Recurse -Force \"C:\\\\Users\\\\mmala\\\\Downloads\\\\alquileresmm\\\\alquileres-mm\\\\app\\\\\\(app\\)\\\\expensas\")",
+      "Bash(Get-Content \"C:\\\\Users\\\\mmala\\\\Downloads\\\\alquileresmm\\\\alquileres-mm\\\\.next\\\\dev\\\\logs\\\\next-development.log\" -Tail 15)"
+    ]
+  }
+}
