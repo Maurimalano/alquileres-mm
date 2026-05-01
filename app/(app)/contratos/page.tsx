@@ -125,12 +125,6 @@ export default function ContratosPage() {
           .order('apellido')
       ])
 
-      const today = new Date().toISOString().split('T')[0]
-      const vencido = (contratosRes.data ?? []).find(
-        (c: any) => c.estado === 'activo' && c.fecha_fin <= today
-      )
-      if (vencido) setVencimientoContrato(vencido)
-
       setContratos(contratosRes.data ?? [])
       setUnidades(unidadesRes.data ?? [])
       setInquilinos(inquilinosRes.data ?? [])
@@ -139,6 +133,19 @@ export default function ContratosPage() {
 
     fetchData()
   }, [])
+
+  // Detección separada: corre después de que loading=false y contratos estén cargados
+  useEffect(() => {
+    if (loading || contratos.length === 0) return
+    const hoy = new Date()
+    hoy.setHours(0, 0, 0, 0)
+    const vencido = (contratos as any[]).find((c) => {
+      if (c.estado !== 'activo') return false
+      const fin = new Date(c.fecha_fin + 'T00:00:00')
+      return fin <= hoy
+    })
+    setVencimientoContrato(vencido ?? null)
+  }, [loading, contratos])
 
   if (loading) {
     return <div>Cargando...</div>
