@@ -122,7 +122,7 @@ export default function PropiedadDetailPage({
       {unidades && unidades.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Unidades ({unidades.length})</CardTitle>
+            <CardTitle>Unidades ({unidades.length}) ↗</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
