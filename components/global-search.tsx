@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Building2, Users, DoorOpen } from 'lucide-react'
+import { Search, Building2, Users, DoorOpen, FileText } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 
 interface SearchResult {
-  type: 'inquilino' | 'propiedad' | 'unidad'
+  type: 'inquilino' | 'propiedad' | 'unidad' | 'contrato'
   id: string
   label: string
   href: string
@@ -15,23 +15,25 @@ interface SearchResult {
 const typeIcon = {
   inquilino: Users,
   propiedad: Building2,
-  unidad: DoorOpen,
+  unidad:    DoorOpen,
+  contrato:  FileText,
 }
 
 const typeLabel = {
   inquilino: 'Inquilino',
   propiedad: 'Propiedad',
-  unidad: 'Unidad',
+  unidad:    'Unidad',
+  contrato:  'Contrato activo',
 }
 
 export function GlobalSearch() {
   const router = useRouter()
-  const [query, setQuery] = useState('')
+  const [query, setQuery]     = useState('')
   const [results, setResults] = useState<SearchResult[]>([])
-  const [open, setOpen] = useState(false)
+  const [open, setOpen]       = useState(false)
   const [loading, setLoading] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const debounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const search = useCallback(async (q: string) => {
     if (q.length < 2) { setResults([]); setOpen(false); return }
@@ -68,6 +70,14 @@ export function GlobalSearch() {
     router.push(result.href)
   }
 
+  // Agrupar por tipo para mostrar separadores
+  const grouped = results.reduce<Record<string, SearchResult[]>>((acc, r) => {
+    if (!acc[r.type]) acc[r.type] = []
+    acc[r.type].push(r)
+    return acc
+  }, {})
+  const order: SearchResult['type'][] = ['inquilino', 'propiedad', 'unidad', 'contrato']
+
   return (
     <div ref={containerRef} className="relative w-full max-w-xs">
       <div className="relative">
@@ -82,21 +92,27 @@ export function GlobalSearch() {
       </div>
 
       {open && results.length > 0 && (
-        <div className="absolute top-full mt-1 w-full min-w-[280px] rounded-md border bg-popover shadow-md z-50 overflow-hidden">
-          {results.map((r) => {
-            const Icon = typeIcon[r.type]
+        <div className="absolute top-full mt-1 w-full min-w-[300px] rounded-md border bg-popover shadow-md z-50 overflow-hidden">
+          {order.map((type) => {
+            const group = grouped[type]
+            if (!group?.length) return null
+            const Icon = typeIcon[type]
             return (
-              <button
-                key={`${r.type}-${r.id}`}
-                className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-accent text-left transition-colors"
-                onClick={() => handleSelect(r)}
-              >
-                <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <div className="flex-1 min-w-0">
-                  <div className="truncate">{r.label}</div>
-                  <div className="text-xs text-muted-foreground">{typeLabel[r.type]}</div>
+              <div key={type}>
+                <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground bg-muted/50 border-b">
+                  {typeLabel[type]}
                 </div>
-              </button>
+                {group.map((r) => (
+                  <button
+                    key={`${r.type}-${r.id}`}
+                    className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-accent text-left transition-colors"
+                    onClick={() => handleSelect(r)}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{r.label}</span>
+                  </button>
+                ))}
+              </div>
             )
           })}
         </div>
