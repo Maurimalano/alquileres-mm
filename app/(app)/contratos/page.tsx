@@ -136,14 +136,23 @@ export default function ContratosPage() {
 
   // Detección separada: corre después de que loading=false y contratos estén cargados
   useEffect(() => {
+    console.log('[vencimiento] loading:', loading, '| contratos.length:', contratos.length)
     if (loading || contratos.length === 0) return
     const hoy = new Date()
     hoy.setHours(0, 0, 0, 0)
+    console.log('[vencimiento] hoy:', hoy.toISOString())
+    console.log('[vencimiento] contratos activos:', (contratos as any[])
+      .filter(c => c.estado === 'activo')
+      .map(c => ({ id: c.id, estado: c.estado, fecha_fin: c.fecha_fin }))
+    )
     const vencido = (contratos as any[]).find((c) => {
       if (c.estado !== 'activo') return false
       const fin = new Date(c.fecha_fin + 'T00:00:00')
-      return fin <= hoy
+      const pasa = fin <= hoy
+      console.log('[vencimiento] contrato', c.id, '| fecha_fin raw:', c.fecha_fin, '| fin parseada:', fin.toISOString(), '| <=hoy:', pasa)
+      return pasa
     })
+    console.log('[vencimiento] vencido encontrado:', vencido ? vencido.id : null)
     setVencimientoContrato(vencido ?? null)
   }, [loading, contratos])
 
