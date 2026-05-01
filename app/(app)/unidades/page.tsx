@@ -40,7 +40,7 @@ export default function UnidadesPage() {
       ])
 
       const raw = unidadesRes.data ?? []
-      console.log('[sortUnidades] valores numero (raw):', raw.slice(0, 10).map(u => ({ numero: u.numero, prop: (u as any).propiedades?.nombre })))
+      console.log('[sortUnidades] primeras 10 unidades (raw):', raw.slice(0, 10).map(u => ({ numero: u.numero, tipo: u.tipo, prop: (u as any).propiedades?.nombre })))
       setUnidades(sortUnidades(raw))
       setPropiedades(propiedadesRes.data ?? [])
       setLoading(false)
