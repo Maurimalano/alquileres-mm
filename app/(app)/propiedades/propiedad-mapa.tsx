@@ -302,7 +302,7 @@ export function MapaOcupacion({ propiedad, unidades, periodo }: Props) {
           </div>
           <Button variant="outline" size="sm" onClick={handleReportClick} disabled={loadingReport}>
             <Printer className="h-3.5 w-3.5 mr-1" />
-            {loadingReport ? 'Cargando...' : 'Reporte PDF'}
+            {loadingReport ? 'Cargando...' : 'Ver Reporte PDF'}
           </Button>
         </div>
       </div>
