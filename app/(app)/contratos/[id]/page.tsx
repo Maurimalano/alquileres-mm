@@ -11,6 +11,7 @@ import { ArrowLeft, Edit, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { EditContratoDialog } from '../edit-contrato-dialog'
+import { sortUnidades } from '@/lib/sort-unidades'
 import type { Contrato } from '@/types/database'
 
 const estadoBadge: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' }> = {
@@ -58,7 +59,7 @@ export default function ContratoDetailPage({
           .select('*, contrato_unidades(id, monto_mensual, unidades(numero, propiedades(nombre))), inquilinos(*), contrato_ajuste_historial(fecha)')
           .eq('id', id)
           .single(),
-        supabase.from('unidades').select('id, numero, propiedades(nombre)').order('numero'),
+        supabase.from('unidades').select('id, numero, propiedades(nombre)'),
         supabase.from('inquilinos').select('id, nombre, apellido').order('apellido')
       ])
 
@@ -67,7 +68,7 @@ export default function ContratoDetailPage({
       }
 
       setContrato(contratoRes.data)
-      setUnidades(unidadesRes.data ?? [])
+      setUnidades(sortUnidades(unidadesRes.data ?? []))
       setInquilinos(inquilinosRes.data ?? [])
       setLoading(false)
     }

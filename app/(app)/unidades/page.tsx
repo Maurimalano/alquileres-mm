@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
+import { sortUnidades } from '@/lib/sort-unidades'
 import { NuevaUnidadDialog } from './nueva-unidad-dialog'
 import { UnidadDetalle } from './unidad-detalle'
 import type { Unidad } from '@/types/database'
@@ -34,11 +35,11 @@ export default function UnidadesPage() {
       const supabase = createClient()
 
       const [unidadesRes, propiedadesRes] = await Promise.all([
-        supabase.from('unidades').select('*, propiedades(nombre)').order('created_at', { ascending: false }),
+        supabase.from('unidades').select('*, propiedades(nombre)'),
         supabase.from('propiedades').select('id, nombre').order('nombre')
       ])
 
-      setUnidades(unidadesRes.data ?? [])
+      setUnidades(sortUnidades(unidadesRes.data ?? []))
       setPropiedades(propiedadesRes.data ?? [])
       setLoading(false)
     }

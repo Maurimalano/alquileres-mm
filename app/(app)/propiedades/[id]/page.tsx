@@ -9,6 +9,7 @@ import { ArrowLeft, Edit, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { EditPropiedadDialog } from '../edit-propiedad-dialog'
+import { sortUnidades } from '@/lib/sort-unidades'
 import type { Propiedad } from '@/types/database'
 
 export default function PropiedadDetailPage({
@@ -41,10 +42,9 @@ export default function PropiedadDetailPage({
         .from('unidades')
         .select('*')
         .eq('propiedad_id', id)
-        .order('numero')
 
       setPropiedad(propiedadData)
-      setUnidades(unidadesData || [])
+      setUnidades(sortUnidades(unidadesData || []))
       setLoading(false)
     }
 

@@ -16,6 +16,7 @@ import { NuevoContratoDialog } from './nuevo-contrato-dialog'
 import { AjustarCanonDialog } from './ajustar-canon-dialog'
 import { AjustarIpcDialog } from './ajustar-ipc-dialog'
 import { ContratoVencimientoChecker } from './contrato-vencimiento-checker'
+import { sortUnidades } from '@/lib/sort-unidades'
 import type { Contrato } from '@/types/database'
 
 const estadoBadge: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' }> = {
@@ -114,8 +115,7 @@ export default function ContratosPage() {
           .order('created_at', { ascending: false }),
         supabase
           .from('unidades')
-          .select('id, numero, propiedades(nombre)')
-          .order('numero'),
+          .select('id, numero, propiedades(nombre)'),
         supabase
           .from('inquilinos')
           .select('id, nombre, apellido')
@@ -123,7 +123,7 @@ export default function ContratosPage() {
       ])
 
       setContratos(contratosRes.data ?? [])
-      setUnidades(unidadesRes.data ?? [])
+      setUnidades(sortUnidades(unidadesRes.data ?? []))
       setInquilinos(inquilinosRes.data ?? [])
       setLoading(false)
     }
