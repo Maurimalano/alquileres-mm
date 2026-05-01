@@ -31,6 +31,11 @@ export async function GET(request: Request) {
       .limit(5),
   ])
 
+  if (inqRes.error)    console.error('[search] inquilinos error:', inqRes.error)
+  if (propRes.error)   console.error('[search] propiedades error:', propRes.error)
+  if (uniNumRes.error) console.error('[search] unidades(numero) error:', uniNumRes.error)
+  console.log('[search] q=%o like=%o inq=%d prop=%d uni=%d', q, like, inqRes.data?.length ?? 0, propRes.data?.length ?? 0, uniNumRes.data?.length ?? 0)
+
   // Ronda 2: usar IDs de ronda 1 para buscar unidades por propiedad y contratos activos
   const propIds = (propRes.data ?? []).map((p) => p.id)
   const inqIds  = (inqRes.data ?? []).map((i) => i.id)
@@ -42,7 +47,7 @@ export async function GET(request: Request) {
           .select('id, numero, propiedades(nombre)')
           .in('propiedad_id', propIds)
           .limit(5)
-      : Promise.resolve({ data: [] as any[] }),
+      : Promise.resolve({ data: [] as any[], error: null }),
     inqIds.length > 0
       ? supabase
           .from('contratos')
@@ -50,8 +55,12 @@ export async function GET(request: Request) {
           .in('inquilino_id', inqIds)
           .eq('estado', 'activo')
           .limit(5)
-      : Promise.resolve({ data: [] as any[] }),
+      : Promise.resolve({ data: [] as any[], error: null }),
   ])
+
+  if (uniPropRes.error)   console.error('[search] unidades(propiedad) error:', uniPropRes.error)
+  if (contratosRes.error) console.error('[search] contratos error:', contratosRes.error)
+  console.log('[search] uniByProp=%d contratos=%d', uniPropRes.data?.length ?? 0, contratosRes.data?.length ?? 0)
 
   // Deduplicar unidades (por número + por propiedad)
   const unidadesMap = new Map<string, any>()
