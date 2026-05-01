@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef } from 'react'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Printer } from 'lucide-react'
 
@@ -96,9 +97,10 @@ export function MapaOcupacion({ propiedad, unidades, periodo }: Props) {
           {sorted.map((u) => {
             const cfg = estadoConfig[u.estado]
             return (
-              <div
+              <Link
                 key={u.id}
-                className="rounded border px-2 py-1.5 min-w-[72px] text-center"
+                href={`/unidades/${u.id}`}
+                className="rounded border px-2 py-1.5 min-w-[72px] text-center block hover:opacity-80 transition-opacity"
                 style={{ backgroundColor: cfg.bg, borderColor: cfg.border, color: cfg.text }}
                 title={u.inquilino ?? u.estado}
               >
@@ -109,7 +111,7 @@ export function MapaOcupacion({ propiedad, unidades, periodo }: Props) {
                     {u.inquilino.split(',')[0]}
                   </div>
                 )}
-              </div>
+              </Link>
             )
           })}
           {sorted.length === 0 && (
