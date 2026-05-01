@@ -12,7 +12,8 @@ function esSalon(numero: string): boolean {
 
 function extraerNumero(numero: string): number {
   const match = numero.match(/\d+/)
-  return match ? parseInt(match[0], 10) : 0
+  // Sin dígitos → va al final del grupo
+  return match ? parseInt(match[0], 10) : Number.MAX_SAFE_INTEGER
 }
 
 export function sortUnidades<T extends {
