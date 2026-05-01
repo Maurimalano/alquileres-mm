@@ -66,7 +66,20 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Pr
     })
     const { numero } = await resNum.json()
 
-    // 2. Insertar pago
+    // 2. Calcular saldo
+    const canonMensual = contratoSeleccionado?.monto_mensual ?? 0
+    const { data: ultimoPago } = await supabase
+      .from('pagos')
+      .select('saldo_resultante')
+      .eq('contrato_id', form.contrato_id)
+      .not('saldo_resultante', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const saldoAnterior   = ultimoPago?.saldo_resultante ?? 0
+    const saldoResultante = saldoAnterior + Number(form.monto) - canonMensual
+
+    // 3. Insertar pago
     const { data: pago } = await supabase.from('pagos').insert({
       contrato_id: form.contrato_id,
       periodo: form.periodo,
@@ -76,6 +89,8 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Pr
       forma_pago: form.forma_pago,
       notas: form.notas || null,
       recibo_numero: numero,
+      saldo_anterior: saldoAnterior,
+      saldo_resultante: saldoResultante,
     }).select().single()
 
     // 3. Crear recibo
