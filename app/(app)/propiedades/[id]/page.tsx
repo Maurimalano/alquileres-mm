@@ -127,14 +127,14 @@ export default function PropiedadDetailPage({
           <CardContent>
             <div className="space-y-2">
               {unidades.map((u) => (
-                <div
+                <Link
                   key={u.id}
+                  href={`/unidades/${u.id}`}
                   className="flex justify-between items-center p-2 border rounded cursor-pointer hover:bg-muted/50 transition-colors"
-                  onClick={() => router.push(`/unidades/${u.id}`)}
                 >
                   <span>Unidad {u.numero}{u.tipo ? ` - ${u.tipo}` : ''}{u.piso ? ` - Piso ${u.piso}` : ''}</span>
                   <span className="text-sm text-muted-foreground">{u.estado}</span>
-                </div>
+                </Link>
               ))}
             </div>
           </CardContent>
