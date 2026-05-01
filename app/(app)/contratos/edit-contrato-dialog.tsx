@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
 import { createClient } from '@/lib/supabase/client'
 
 interface UnidadOption {
@@ -65,6 +66,7 @@ export function EditContratoDialog({ unidades, inquilinos, contrato, open, onOpe
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState(emptyForm)
+  const [depositoPagado, setDepositoPagado] = useState(false)
   const [unidadesForm, setUnidadesForm] = useState<UnidadEntry[]>([
     { unidad_id: '', monto_mensual: '' },
   ])
@@ -85,6 +87,7 @@ export function EditContratoDialog({ unidades, inquilinos, contrato, open, onOpe
         tasa_interes: String(contrato.tasa_interes || '0'),
         tasa_interes_tipo: contrato.tasa_interes_tipo || 'mensual',
       })
+      setDepositoPagado(contrato.deposito_pagado ?? false)
       // Cargar unidades
       const cus = contrato.contrato_unidades || []
       if (cus.length > 0) {
@@ -97,6 +100,7 @@ export function EditContratoDialog({ unidades, inquilinos, contrato, open, onOpe
       }
     } else {
       setForm(emptyForm)
+      setDepositoPagado(false)
       setUnidadesForm([{ unidad_id: '', monto_mensual: '' }])
     }
   }, [contrato])
@@ -135,6 +139,7 @@ export function EditContratoDialog({ unidades, inquilinos, contrato, open, onOpe
           fecha_fin: form.fecha_fin,
           monto_mensual: totalMensual,
           deposito: form.deposito ? Number(form.deposito) : null,
+          deposito_pagado: depositoPagado,
           estado: form.estado,
           dia_vencimiento: Number(form.dia_vencimiento),
           tasa_interes: Number(form.tasa_interes),
@@ -189,6 +194,7 @@ export function EditContratoDialog({ unidades, inquilinos, contrato, open, onOpe
           fecha_fin: form.fecha_fin,
           monto_mensual: totalMensual,
           deposito: form.deposito ? Number(form.deposito) : null,
+          deposito_pagado: depositoPagado,
           estado: form.estado,
           dia_vencimiento: Number(form.dia_vencimiento),
           tasa_interes: Number(form.tasa_interes),
@@ -363,6 +369,19 @@ export function EditContratoDialog({ unidades, inquilinos, contrato, open, onOpe
               onChange={(e) => setForm({ ...form, deposito: e.target.value })}
             />
           </div>
+
+          {form.deposito && Number(form.deposito) > 0 && (
+            <div className="flex items-center justify-between rounded-md border px-3 py-2">
+              <Label htmlFor="deposito_pagado" className="cursor-pointer">
+                Depósito cobrado
+              </Label>
+              <Switch
+                id="deposito_pagado"
+                checked={depositoPagado}
+                onCheckedChange={setDepositoPagado}
+              />
+            </div>
+          )}
 
           <Separator />
 

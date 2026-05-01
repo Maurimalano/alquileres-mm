@@ -74,7 +74,7 @@ export default function UnidadDetailPage({
         .select(`
           monto_mensual,
           contratos!inner(
-            id, fecha_inicio, fecha_fin, estado, monto_mensual,
+            id, fecha_inicio, fecha_fin, estado, monto_mensual, deposito, deposito_pagado,
             inquilinos(nombre, apellido)
           )
         `)
@@ -172,9 +172,9 @@ export default function UnidadDetailPage({
             <CardHeader><CardTitle>Contrato activo</CardTitle></CardHeader>
             <CardContent className="space-y-3 text-sm">
               {[
-                ['Inquilino',  inquilino ? `${inquilino.apellido}, ${inquilino.nombre}` : '—'],
-                ['Inicio',     new Date(contrato.fecha_inicio + 'T00:00:00').toLocaleDateString('es-AR')],
-                ['Fin',        new Date(contrato.fecha_fin    + 'T00:00:00').toLocaleDateString('es-AR')],
+                ['Inquilino',    inquilino ? `${inquilino.apellido}, ${inquilino.nombre}` : '—'],
+                ['Inicio',       new Date(contrato.fecha_inicio + 'T00:00:00').toLocaleDateString('es-AR')],
+                ['Fin',          new Date(contrato.fecha_fin    + 'T00:00:00').toLocaleDateString('es-AR')],
                 ['Canon unidad', formatCurrency(canonUnidad)],
                 ['Canon total',  formatCurrency(contrato.monto_mensual)],
               ].map(([label, value]) => (
@@ -183,6 +183,17 @@ export default function UnidadDetailPage({
                   <span className="font-medium">{value}</span>
                 </div>
               ))}
+              {contrato.deposito > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Depósito</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{formatCurrency(contrato.deposito)}</span>
+                    <Badge variant={contrato.deposito_pagado ? 'default' : 'destructive'}>
+                      {contrato.deposito_pagado ? 'Cobrado' : 'Pendiente'}
+                    </Badge>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         ) : (

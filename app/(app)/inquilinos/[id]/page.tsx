@@ -4,11 +4,13 @@ import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { notFound } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ArrowLeft, Edit, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { EditInquilinoDialog } from '../edit-inquilino-dialog'
+import { formatCurrency } from '@/lib/format'
 import type { Inquilino } from '@/types/database'
 
 export default function InquilinoDetailPage({
@@ -18,6 +20,7 @@ export default function InquilinoDetailPage({
 }) {
   const router = useRouter()
   const [inquilino, setInquilino] = useState<any>(null)
+  const [contratoActivo, setContratoActivo] = useState<any>(null)
   const [openEdit, setOpenEdit] = useState(false)
   const [loading, setLoading] = useState(true)
 
@@ -37,6 +40,18 @@ export default function InquilinoDetailPage({
       }
 
       setInquilino(data)
+
+      const { data: contrato } = await supabase
+        .from('contratos')
+        .select(`
+          id, deposito, deposito_pagado, monto_mensual, fecha_inicio, fecha_fin,
+          contrato_unidades(unidades(numero, propiedades(nombre)))
+        `)
+        .eq('inquilino_id', id)
+        .eq('estado', 'activo')
+        .maybeSingle()
+      setContratoActivo(contrato)
+
       setLoading(false)
     }
 
@@ -122,6 +137,58 @@ export default function InquilinoDetailPage({
           </div>
         </CardContent>
       </Card>
+
+      {contratoActivo && (
+        <Card>
+          <CardHeader><CardTitle>Contrato activo</CardTitle></CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {(() => {
+              const cu: any[] = contratoActivo.contrato_unidades ?? []
+              const unidades = cu
+                .map((e: any) => {
+                  const u = e.unidades
+                  const prop = Array.isArray(u?.propiedades) ? u.propiedades[0]?.nombre : u?.propiedades?.nombre
+                  return u ? `${u.numero}${prop ? ` — ${prop}` : ''}` : null
+                })
+                .filter(Boolean)
+                .join(', ')
+              return (
+                <>
+                  {unidades && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Unidad/es</span>
+                      <span className="font-medium">{unidades}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Canon mensual</span>
+                    <span className="font-medium">{formatCurrency(contratoActivo.monto_mensual)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Vigencia</span>
+                    <span className="font-medium">
+                      {new Date(contratoActivo.fecha_inicio + 'T00:00:00').toLocaleDateString('es-AR')}
+                      {' → '}
+                      {new Date(contratoActivo.fecha_fin + 'T00:00:00').toLocaleDateString('es-AR')}
+                    </span>
+                  </div>
+                  {contratoActivo.deposito > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Depósito</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{formatCurrency(contratoActivo.deposito)}</span>
+                        <Badge variant={contratoActivo.deposito_pagado ? 'default' : 'destructive'}>
+                          {contratoActivo.deposito_pagado ? 'Cobrado' : 'Pendiente'}
+                        </Badge>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )
+            })()}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="flex gap-2">
         <Button variant="outline" onClick={() => setOpenEdit(true)}>
