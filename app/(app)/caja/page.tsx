@@ -52,10 +52,31 @@ function getNombreUnidades(contrato: any): string {
   return contrato?.unidades?.numero ?? '—'
 }
 
+function getNombrePropiedad(contrato: any): string {
+  const cus: any[] = contrato?.contrato_unidades ?? []
+  for (const cu of cus) {
+    const prop = cu.unidades?.propiedades
+    const nombre = Array.isArray(prop) ? prop[0]?.nombre : prop?.nombre
+    if (nombre) return nombre
+  }
+  return '—'
+}
+
 function getNombreInquilino(contrato: any): string {
   const inq = contrato?.inquilinos
   if (!inq) return '—'
   return `${inq.nombre} ${inq.apellido}`
+}
+
+function getMediosLabel(pago: any): string {
+  const medios: any[] = pago.pago_medios ?? []
+  if (medios.length === 0) return pago.forma_pago ?? '—'
+  return medios.map((m: any) => {
+    const detalle = m.tipo === 'cheque'
+      ? ` #${m.cheque_numero ?? ''}${m.cheque_banco ? ` ${m.cheque_banco}` : ''}`
+      : m.tipo === 'retencion' ? ` (${m.retencion_concepto ?? ''})` : ''
+    return `${m.tipo}${detalle}`
+  }).join(' + ')
 }
 
 export default async function CajaPage({
@@ -74,9 +95,10 @@ export default async function CajaPage({
     .from('pagos')
     .select(`
       id, monto, forma_pago, recibo_numero, fecha_pago, periodo,
+      pago_medios(tipo, importe, cheque_numero, cheque_banco, retencion_concepto),
       contratos(
         inquilinos(nombre, apellido),
-        contrato_unidades(unidades(numero)),
+        contrato_unidades(unidades(numero, propiedades(nombre))),
         unidades(numero)
       )
     `)
@@ -84,8 +106,16 @@ export default async function CajaPage({
     .eq('fecha_pago', todayStr)
     .order('created_at', { ascending: false })
 
-  const diarEfectivo = (pagosHoy ?? []).filter((p) => p.forma_pago === 'efectivo').reduce((a, p) => a + p.monto, 0)
-  const diarTransfer = (pagosHoy ?? []).filter((p) => p.forma_pago === 'transferencia').reduce((a, p) => a + p.monto, 0)
+  const diarEfectivo = (pagosHoy ?? []).reduce((a, p) => {
+    const medios: any[] = (p as any).pago_medios ?? []
+    if (medios.length > 0) return a + medios.filter(m => m.tipo === 'efectivo').reduce((s: number, m: any) => s + m.importe, 0)
+    return p.forma_pago === 'efectivo' ? a + p.monto : a
+  }, 0)
+  const diarTransfer = (pagosHoy ?? []).reduce((a, p) => {
+    const medios: any[] = (p as any).pago_medios ?? []
+    if (medios.length > 0) return a + medios.filter(m => m.tipo === 'transferencia').reduce((s: number, m: any) => s + m.importe, 0)
+    return p.forma_pago === 'transferencia' ? a + p.monto : a
+  }, 0)
 
   // ── Alquileres ────────────────────────────────────────────
   const { data: pagos } = await supabase
@@ -144,11 +174,11 @@ export default async function CajaPage({
               <TableHeader>
                 <TableRow>
                   <TableHead>Recibo</TableHead>
-                  <TableHead>Unidad</TableHead>
+                  <TableHead>Propiedad / Unidad</TableHead>
                   <TableHead>Inquilino</TableHead>
                   <TableHead>Período</TableHead>
                   <TableHead className="text-right">Monto</TableHead>
-                  <TableHead>Forma</TableHead>
+                  <TableHead>Medios de pago</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -158,12 +188,15 @@ export default async function CajaPage({
                       <TableCell className="font-mono text-sm">
                         {p.recibo_numero ?? <span className="text-muted-foreground">—</span>}
                       </TableCell>
-                      <TableCell>{getNombreUnidades((p as any).contratos)}</TableCell>
+                      <TableCell>
+                        <div className="font-medium">{getNombrePropiedad((p as any).contratos)}</div>
+                        <div className="text-xs text-muted-foreground">{getNombreUnidades((p as any).contratos)}</div>
+                      </TableCell>
                       <TableCell>{getNombreInquilino((p as any).contratos)}</TableCell>
                       <TableCell>{p.periodo}</TableCell>
                       <TableCell className="text-right">{formatCurrency(p.monto)}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="capitalize">{p.forma_pago}</Badge>
+                        <span className="text-sm capitalize">{getMediosLabel(p)}</span>
                       </TableCell>
                     </TableRow>
                   ))
