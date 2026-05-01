@@ -15,8 +15,7 @@ import { Badge } from '@/components/ui/badge'
 import { NuevoContratoDialog } from './nuevo-contrato-dialog'
 import { AjustarCanonDialog } from './ajustar-canon-dialog'
 import { AjustarIpcDialog } from './ajustar-ipc-dialog'
-import { ContratoVencimientoDialog } from './contrato-vencimiento-dialog'
-import { EditContratoDialog } from './edit-contrato-dialog'
+import { ContratoVencimientoChecker } from './contrato-vencimiento-checker'
 import type { Contrato } from '@/types/database'
 
 const estadoBadge: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' }> = {
@@ -103,8 +102,6 @@ export default function ContratosPage() {
   const [unidades, setUnidades] = useState<any[]>([])
   const [inquilinos, setInquilinos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [vencimientoContrato, setVencimientoContrato] = useState<any>(null)
-  const [showRenovarDialog, setShowRenovarDialog] = useState(false)
 
   useEffect(() => {
     async function fetchData() {
@@ -133,28 +130,6 @@ export default function ContratosPage() {
 
     fetchData()
   }, [])
-
-  // Detección separada: corre después de que loading=false y contratos estén cargados
-  useEffect(() => {
-    console.log('[vencimiento] loading:', loading, '| contratos.length:', contratos.length)
-    if (loading || contratos.length === 0) return
-    const hoy = new Date()
-    hoy.setHours(0, 0, 0, 0)
-    console.log('[vencimiento] hoy:', hoy.toISOString())
-    console.log('[vencimiento] contratos activos:', (contratos as any[])
-      .filter(c => c.estado === 'activo')
-      .map(c => ({ id: c.id, estado: c.estado, fecha_fin: c.fecha_fin }))
-    )
-    const vencido = (contratos as any[]).find((c) => {
-      if (c.estado !== 'activo') return false
-      const fin = new Date(c.fecha_fin + 'T00:00:00')
-      const pasa = fin <= hoy
-      console.log('[vencimiento] contrato', c.id, '| fecha_fin raw:', c.fecha_fin, '| fin parseada:', fin.toISOString(), '| <=hoy:', pasa)
-      return pasa
-    })
-    console.log('[vencimiento] vencido encontrado:', vencido ? vencido.id : null)
-    setVencimientoContrato(vencido ?? null)
-  }, [loading, contratos])
 
   if (loading) {
     return <div>Cargando...</div>
@@ -297,26 +272,11 @@ export default function ContratosPage() {
         </Table>
       </div>
 
-      {vencimientoContrato && !showRenovarDialog && (
-        <ContratoVencimientoDialog
-          contrato={vencimientoContrato}
-          onRenovar={() => setShowRenovarDialog(true)}
-          onClose={() => setVencimientoContrato(null)}
-        />
-      )}
-
-      {showRenovarDialog && vencimientoContrato && (
-        <EditContratoDialog
-          unidades={unidades}
-          inquilinos={inquilinos}
-          contrato={vencimientoContrato}
-          open={showRenovarDialog}
-          onOpenChange={(v) => {
-            setShowRenovarDialog(v)
-            if (!v) setVencimientoContrato(null)
-          }}
-        />
-      )}
+      <ContratoVencimientoChecker
+        contratos={contratos}
+        unidades={unidades}
+        inquilinos={inquilinos}
+      />
     </div>
   )
 }
