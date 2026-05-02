@@ -47,10 +47,11 @@ export default function PagoDetailPage({
   params: Promise<{ id: string }>
 }) {
   const router = useRouter()
-  const [pago, setPago] = useState<any>(null)
+  const [pago, setPago]       = useState<any>(null)
+  const [medios, setMedios]   = useState<any[]>([])
   const [contratos, setContratos] = useState<any[]>([])
-  const [openEdit, setOpenEdit] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [openEdit, setOpenEdit]   = useState(false)
+  const [loading, setLoading]     = useState(true)
 
   const { id } = use(params)
 
@@ -76,6 +77,15 @@ export default function PagoDetailPage({
 
       setPago(pagoData)
       setContratos(contratosData || [])
+
+      // Medios de pago
+      const { data: mediosData } = await supabase
+        .from('pago_medios')
+        .select('*')
+        .eq('pago_id', id)
+        .order('created_at')
+      setMedios(mediosData || [])
+
       setLoading(false)
     }
 
@@ -175,7 +185,30 @@ export default function PagoDetailPage({
             </div>
             <div>
               <label className="text-sm font-medium text-muted-foreground">Forma de pago</label>
-              <p className="text-sm">{pago.forma_pago}</p>
+              {medios.length > 0 ? (
+                <ul className="text-sm space-y-0.5 mt-0.5">
+                  {medios.map((m: any) => {
+                    const partes: string[] = [m.tipo]
+                    if (m.tipo === 'cheque') {
+                      if (m.cheque_numero)  partes.push(`Nº ${m.cheque_numero}`)
+                      if (m.cheque_banco)   partes.push(m.cheque_banco)
+                      if (m.cheque_titular) partes.push(`Titular: ${m.cheque_titular}`)
+                      if (m.cheque_cuit)    partes.push(`CUIT: ${m.cheque_cuit}`)
+                    }
+                    if (m.tipo === 'retencion') {
+                      if (m.retencion_concepto) partes.push(m.retencion_concepto)
+                      if (m.retencion_numero)   partes.push(`Nº ${m.retencion_numero}`)
+                    }
+                    return (
+                      <li key={m.id} className="capitalize">
+                        {partes.join(' — ')} — {formatCurrency(m.importe)}
+                      </li>
+                    )
+                  })}
+                </ul>
+              ) : (
+                <p className="text-sm capitalize">{pago.forma_pago}</p>
+              )}
             </div>
           </div>
           {pago.notas && (

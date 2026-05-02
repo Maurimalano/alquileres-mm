@@ -148,7 +148,7 @@ export function EditPagoDialog({ contratos, locadorNombre = 'Propietario', pago,
               <SelectContent>
                 {contratos.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
-                    {c.inquilinos.nombre} {c.inquilinos.apellido} - {c.contrato_unidades[0]?.unidades.numero} ({c.monto_mensual}€)
+                    {c.inquilinos?.apellido}, {c.inquilinos?.nombre} — {c.contrato_unidades[0]?.unidades?.numero ?? '?'} (${Math.round(c.monto_mensual).toLocaleString('es-AR')})
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -166,7 +166,7 @@ export function EditPagoDialog({ contratos, locadorNombre = 'Propietario', pago,
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="monto">Monto (€)</Label>
+              <Label htmlFor="monto">Monto ($)</Label>
               <Input
                 id="monto"
                 type="number"

@@ -225,9 +225,29 @@ function ReciboContenido({ datos, medios, copia }: {
 
 // ── Componente público ─────────────────────────────────────────────────────────
 
-export function ReciboPrint({ datos, medios }: ReciboPrintProps) {
+export function ReciboPrint({ datos, medios: mediosProp }: ReciboPrintProps) {
   const [showPreview, setShowPreview] = useState(false)
+  const [mediosFetched, setMediosFetched] = useState<MedioPagoRecibo[] | null>(null)
   const printRef = useRef<HTMLDivElement>(null)
+
+  // Cuando abre el preview, si no llegan medios por prop ni en datos, los busca por numero de recibo
+  async function openPreview() {
+    setShowPreview(true)
+    if (mediosProp || datos.medios_pago?.length) return
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      const { data: pagoRow } = await supabase
+        .from('pagos').select('id').eq('recibo_numero', datos.numero).maybeSingle()
+      if (pagoRow?.id) {
+        const { data: rows } = await supabase
+          .from('pago_medios').select('*').eq('pago_id', pagoRow.id).order('created_at')
+        if (rows?.length) setMediosFetched(rows as MedioPagoRecibo[])
+      }
+    } catch { /* pago_medios table may not exist yet */ }
+  }
+
+  const medios = mediosProp ?? mediosFetched ?? datos.medios_pago
 
   function handlePrint() {
     const content = printRef.current?.innerHTML ?? ''
@@ -248,7 +268,7 @@ export function ReciboPrint({ datos, medios }: ReciboPrintProps) {
 
   return (
     <>
-      <Button variant="outline" size="sm" onClick={() => setShowPreview(true)}>
+      <Button variant="outline" size="sm" onClick={openPreview}>
         <Printer className="h-4 w-4 mr-1" />
         Imprimir PDF
       </Button>
