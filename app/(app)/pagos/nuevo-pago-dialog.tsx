@@ -142,11 +142,14 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Pr
     const saldoAnterior   = ultimoPago?.saldo_resultante ?? 0
     const saldoResultante = saldoAnterior + totalMonto - canonMensual
 
-    // Forma de pago principal (primer medio, o "multiple" si hay más de uno)
-    const formaPago: string = medios.length === 1 ? medios[0].tipo : 'multiple'
+    // Forma de pago: usar el primer medio que sea efectivo/transferencia,
+    // o 'efectivo' como fallback — compatible con el constraint original.
+    const tiposSimples = ['efectivo', 'transferencia'] as const
+    const primerSimple = medios.find(m => (tiposSimples as readonly string[]).includes(m.tipo))
+    const formaPago = primerSimple?.tipo ?? 'efectivo'
 
     // 3. Insertar pago
-    const { data: pago } = await supabase.from('pagos').insert({
+    const { data: pago, error: pagoError } = await supabase.from('pagos').insert({
       contrato_id:      form.contrato_id,
       periodo:          form.periodo,
       monto:            totalMonto,
@@ -158,6 +161,13 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Pr
       saldo_anterior:   saldoAnterior,
       saldo_resultante: saldoResultante,
     }).select().single()
+
+    if (pagoError) {
+      console.error('[nuevo-pago] error insertando pago:', pagoError)
+      alert(`Error al registrar el pago: ${pagoError.message}`)
+      setLoading(false)
+      return
+    }
 
     // 4. Insertar medios de pago
     if (pago) {
