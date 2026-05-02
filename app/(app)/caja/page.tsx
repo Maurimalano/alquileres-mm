@@ -9,6 +9,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { formatCurrency } from '@/lib/format'
 import { CajaFiltro } from './caja-filtro'
+import { CajaDiariaTab, CajaHistorialTab } from './caja-diaria-client'
 
 interface SearchParams { periodo?: string }
 
@@ -45,40 +46,6 @@ function ResumenCards({
   )
 }
 
-function getNombreUnidades(contrato: any): string {
-  const cus: any[] = contrato?.contrato_unidades ?? []
-  const nums = cus.map((cu) => cu.unidades?.numero).filter(Boolean)
-  if (nums.length > 0) return nums.join(' / ')
-  return contrato?.unidades?.numero ?? '—'
-}
-
-function getNombrePropiedad(contrato: any): string {
-  const cus: any[] = contrato?.contrato_unidades ?? []
-  for (const cu of cus) {
-    const prop = cu.unidades?.propiedades
-    const nombre = Array.isArray(prop) ? prop[0]?.nombre : prop?.nombre
-    if (nombre) return nombre
-  }
-  return '—'
-}
-
-function getNombreInquilino(contrato: any): string {
-  const inq = contrato?.inquilinos
-  if (!inq) return '—'
-  return `${inq.nombre} ${inq.apellido}`
-}
-
-function getMediosLabel(pago: any): string {
-  const medios: any[] = pago.pago_medios ?? []
-  if (medios.length === 0) return pago.forma_pago ?? '—'
-  return medios.map((m: any) => {
-    const detalle = m.tipo === 'cheque'
-      ? ` #${m.cheque_numero ?? ''}${m.cheque_banco ? ` ${m.cheque_banco}` : ''}`
-      : m.tipo === 'retencion' ? ` (${m.retencion_concepto ?? ''})` : ''
-    return `${m.tipo}${detalle}`
-  }).join(' + ')
-}
-
 export default async function CajaPage({
   searchParams,
 }: {
@@ -105,17 +72,6 @@ export default async function CajaPage({
     .eq('estado', 'pagado')
     .eq('fecha_pago', todayStr)
     .order('created_at', { ascending: false })
-
-  const diarEfectivo = (pagosHoy ?? []).reduce((a, p) => {
-    const medios: any[] = (p as any).pago_medios ?? []
-    if (medios.length > 0) return a + medios.filter(m => m.tipo === 'efectivo').reduce((s: number, m: any) => s + m.importe, 0)
-    return p.forma_pago === 'efectivo' ? a + p.monto : a
-  }, 0)
-  const diarTransfer = (pagosHoy ?? []).reduce((a, p) => {
-    const medios: any[] = (p as any).pago_medios ?? []
-    if (medios.length > 0) return a + medios.filter(m => m.tipo === 'transferencia').reduce((s: number, m: any) => s + m.importe, 0)
-    return p.forma_pago === 'transferencia' ? a + p.monto : a
-  }, 0)
 
   // ── Alquileres ────────────────────────────────────────────
   const { data: pagos } = await supabase
@@ -161,55 +117,20 @@ export default async function CajaPage({
       <Tabs defaultValue="hoy">
         <TabsList>
           <TabsTrigger value="hoy">Hoy</TabsTrigger>
+          <TabsTrigger value="historial">Historial</TabsTrigger>
           <TabsTrigger value="alquileres">Alquileres</TabsTrigger>
           <TabsTrigger value="servicios">Servicios</TabsTrigger>
           <TabsTrigger value="expensas">Expensas</TabsTrigger>
         </TabsList>
 
         {/* ── Caja diaria ── */}
-        <TabsContent value="hoy" className="mt-4 space-y-4">
-          <ResumenCards efectivo={diarEfectivo} transferencia={diarTransfer} label="cobrado hoy" />
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Recibo</TableHead>
-                  <TableHead>Propiedad / Unidad</TableHead>
-                  <TableHead>Inquilino</TableHead>
-                  <TableHead>Período</TableHead>
-                  <TableHead className="text-right">Monto</TableHead>
-                  <TableHead>Medios de pago</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(pagosHoy ?? []).length > 0 ? (
-                  pagosHoy!.map((p) => (
-                    <TableRow key={p.id}>
-                      <TableCell className="font-mono text-sm">
-                        {p.recibo_numero ?? <span className="text-muted-foreground">—</span>}
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium">{getNombrePropiedad((p as any).contratos)}</div>
-                        <div className="text-xs text-muted-foreground">{getNombreUnidades((p as any).contratos)}</div>
-                      </TableCell>
-                      <TableCell>{getNombreInquilino((p as any).contratos)}</TableCell>
-                      <TableCell>{p.periodo}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(p.monto)}</TableCell>
-                      <TableCell>
-                        <span className="text-sm capitalize">{getMediosLabel(p)}</span>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-20 text-center text-muted-foreground">
-                      Sin cobros registrados hoy.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
+        <TabsContent value="hoy" className="mt-4">
+          <CajaDiariaTab pagos={pagosHoy ?? []} fecha={todayStr} />
+        </TabsContent>
+
+        {/* ── Historial ── */}
+        <TabsContent value="historial" className="mt-4">
+          <CajaHistorialTab />
         </TabsContent>
 
         {/* ── Alquileres ── */}
