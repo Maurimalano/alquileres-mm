@@ -207,6 +207,21 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Pr
         .map(m => `${tipoLabel[m.tipo]} ${fmtCurrency(Number(m.importe))}`)
         .join(' + ')
 
+      const mediosPago = medios
+        .filter(m => Number(m.importe) > 0)
+        .map(m => ({
+          tipo:                 m.tipo,
+          importe:              Number(m.importe),
+          cheque_numero:        m.cheque_numero        || undefined,
+          cheque_banco:         m.cheque_banco         || undefined,
+          cheque_titular:       m.cheque_titular       || undefined,
+          cheque_cuit:          m.cheque_cuit          || undefined,
+          cheque_vencimiento:   m.cheque_vencimiento   || undefined,
+          cheque_plaza:         m.cheque_plaza         || undefined,
+          retencion_concepto:   m.retencion_concepto   || undefined,
+          retencion_numero:     m.retencion_numero     || undefined,
+        }))
+
       const datos = {
         numero,
         tipo:               'ALQ',
@@ -221,6 +236,7 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Pr
         periodo:            form.periodo,
         monto:              totalMonto,
         forma_pago:         mediosLabel,
+        medios_pago:        mediosPago.length > 0 ? mediosPago : undefined,
         notas:              form.notas || undefined,
         unidades_detalle:   unidades_detalle.length > 1 ? unidades_detalle : undefined,
       }
