@@ -1,8 +1,11 @@
 'use client'
 
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Printer } from 'lucide-react'
+import {
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
+import { Printer, X } from 'lucide-react'
 import { numeroALetras } from '@/lib/numero-a-letras'
 import { formatCurrency, formatFecha } from '@/lib/format'
 
@@ -10,6 +13,19 @@ export interface UnidadDetalleRecibo {
   unidad: string
   propiedad?: string
   monto: number
+}
+
+export interface MedioPagoRecibo {
+  tipo: 'efectivo' | 'transferencia' | 'cheque' | 'retencion'
+  importe: number
+  cheque_numero?: string | null
+  cheque_banco?: string | null
+  cheque_titular?: string | null
+  cheque_cuit?: string | null
+  cheque_vencimiento?: string | null
+  cheque_plaza?: string | null
+  retencion_concepto?: string | null
+  retencion_numero?: string | null
 }
 
 export interface DatosRecibo {
@@ -31,17 +47,63 @@ export interface DatosRecibo {
   monto: number
   forma_pago?: string
   notas?: string
-  // Detalle multi-unidad (presente solo cuando hay más de una unidad)
+  // Detalle multi-unidad
   unidades_detalle?: UnidadDetalleRecibo[]
+  // Medios de pago detallados (opcional, cuando se usa pago_medios)
+  medios_pago?: MedioPagoRecibo[]
 }
 
 interface ReciboPrintProps {
   datos: DatosRecibo
+  medios?: MedioPagoRecibo[]
 }
 
-function ReciboContenido({ datos, copia }: { datos: DatosRecibo; copia: string }) {
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function fmtDate(iso: string | null | undefined) {
+  if (!iso) return ''
+  return new Date(iso + 'T00:00:00').toLocaleDateString('es-AR')
+}
+
+function medioLabel(m: MedioPagoRecibo): string {
+  const importe = formatCurrency(m.importe)
+  switch (m.tipo) {
+    case 'efectivo':
+      return `Efectivo — ${importe}`
+    case 'transferencia':
+      return `Transferencia — ${importe}`
+    case 'cheque': {
+      const partes: string[] = ['Cheque']
+      if (m.cheque_numero)     partes.push(`Nº ${m.cheque_numero}`)
+      if (m.cheque_banco)      partes.push(m.cheque_banco)
+      if (m.cheque_titular)    partes.push(`Titular: ${m.cheque_titular}`)
+      if (m.cheque_cuit)       partes.push(`CUIT: ${m.cheque_cuit}`)
+      if (m.cheque_vencimiento) partes.push(`Vto: ${fmtDate(m.cheque_vencimiento)}`)
+      if (m.cheque_plaza)      partes.push(`Plaza: ${m.cheque_plaza}`)
+      partes.push(importe)
+      return partes.join(' — ')
+    }
+    case 'retencion': {
+      const partes: string[] = ['Retención']
+      if (m.retencion_concepto) partes.push(m.retencion_concepto)
+      if (m.retencion_numero)   partes.push(`Nº ${m.retencion_numero}`)
+      partes.push(importe)
+      return partes.join(' — ')
+    }
+    default:
+      return importe
+  }
+}
+
+// ── Contenido del recibo ───────────────────────────────────────────────────────
+
+function ReciboContenido({ datos, medios, copia }: {
+  datos: DatosRecibo
+  medios?: MedioPagoRecibo[]
+  copia: string
+}) {
   const esMultiUnidad = datos.unidades_detalle && datos.unidades_detalle.length > 1
-  const colSpanConcepto = datos.periodo ? 1 : 2
+  const mediosEfectivos = medios ?? datos.medios_pago
 
   return (
     <div style={{ fontFamily: 'Arial, sans-serif', fontSize: '12px', padding: '16px 24px', color: '#000' }}>
@@ -58,10 +120,7 @@ function ReciboContenido({ datos, copia }: { datos: DatosRecibo; copia: string }
         </div>
       </div>
 
-      {/* Copia label */}
-      <div style={{ fontSize: '10px', color: '#666', marginBottom: '8px', textAlign: 'right' }}>
-        {copia}
-      </div>
+      <div style={{ fontSize: '10px', color: '#666', marginBottom: '8px', textAlign: 'right' }}>{copia}</div>
 
       {/* Partes */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
@@ -94,74 +153,61 @@ function ReciboContenido({ datos, copia }: { datos: DatosRecibo; copia: string }
         </div>
       ) : null}
 
-      {/* Detalle */}
+      {/* Detalle de concepto */}
       <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '12px' }}>
         <thead>
           <tr style={{ backgroundColor: '#f5f5f5' }}>
             <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'left', fontSize: '11px' }}>Concepto</th>
-            {datos.periodo && (
-              <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'center', fontSize: '11px' }}>Período</th>
-            )}
+            {datos.periodo && <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'center', fontSize: '11px' }}>Período</th>}
             <th style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'right', fontSize: '11px' }}>Importe</th>
           </tr>
         </thead>
         <tbody>
-          {esMultiUnidad ? (
-            datos.unidades_detalle!.map((u, i) => (
-              <tr key={i}>
-                <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>
-                  {datos.concepto} — Unidad {u.unidad}
-                </td>
-                {datos.periodo && (
-                  <td style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'center' }}>
-                    {datos.periodo}
-                  </td>
-                )}
-                <td style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'right' }}>
-                  {formatCurrency(u.monto)}
-                </td>
-              </tr>
-            ))
-          ) : (
+          {esMultiUnidad ? datos.unidades_detalle!.map((u, i) => (
+            <tr key={i}>
+              <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{datos.concepto} — Unidad {u.unidad}</td>
+              {datos.periodo && <td style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'center' }}>{datos.periodo}</td>}
+              <td style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'right' }}>{formatCurrency(u.monto)}</td>
+            </tr>
+          )) : (
             <tr>
               <td style={{ border: '1px solid #ddd', padding: '6px 8px' }}>{datos.concepto}</td>
-              {datos.periodo && (
-                <td style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'center' }}>{datos.periodo}</td>
-              )}
-              <td style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'right', fontWeight: 'bold' }}>
-                {formatCurrency(datos.monto)}
-              </td>
+              {datos.periodo && <td style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'center' }}>{datos.periodo}</td>}
+              <td style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'right', fontWeight: 'bold' }}>{formatCurrency(datos.monto)}</td>
             </tr>
           )}
         </tbody>
         <tfoot>
           <tr style={{ backgroundColor: '#f5f5f5' }}>
-            <td
-              colSpan={datos.periodo ? 2 : colSpanConcepto}
-              style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'right', fontWeight: 'bold' }}
-            >
-              TOTAL
-            </td>
-            <td style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'right', fontWeight: 'bold', fontSize: '14px' }}>
-              {formatCurrency(datos.monto)}
-            </td>
+            <td colSpan={datos.periodo ? 2 : 1} style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'right', fontWeight: 'bold' }}>TOTAL</td>
+            <td style={{ border: '1px solid #ddd', padding: '6px 8px', textAlign: 'right', fontWeight: 'bold', fontSize: '14px' }}>{formatCurrency(datos.monto)}</td>
           </tr>
         </tfoot>
       </table>
 
-      {/* En letras y forma de pago */}
+      {/* En letras */}
       <div style={{ marginBottom: '8px', fontSize: '11px', fontStyle: 'italic' }}>
         Son: <strong>{numeroALetras(datos.monto)}</strong>
       </div>
-      {datos.forma_pago && (
+
+      {/* Medios de pago — desglose detallado */}
+      {mediosEfectivos && mediosEfectivos.length > 0 ? (
+        <div style={{ marginBottom: '8px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 'bold', marginBottom: '4px' }}>Forma de pago:</div>
+          {mediosEfectivos.map((m, i) => (
+            <div key={i} style={{ fontSize: '11px', paddingLeft: '8px' }}>
+              • {medioLabel(m)}
+            </div>
+          ))}
+        </div>
+      ) : datos.forma_pago ? (
         <div style={{ fontSize: '11px', marginBottom: '8px' }}>
           Forma de pago: <strong style={{ textTransform: 'capitalize' }}>{datos.forma_pago}</strong>
         </div>
-      )}
+      ) : null}
+
       {datos.notas && (
-        <div style={{ fontSize: '11px', color: '#555', marginBottom: '8px' }}>
-          Notas: {datos.notas}
-        </div>
+        <div style={{ fontSize: '11px', color: '#555', marginBottom: '8px' }}>Notas: {datos.notas}</div>
       )}
 
       {/* Firma */}
@@ -177,7 +223,10 @@ function ReciboContenido({ datos, copia }: { datos: DatosRecibo; copia: string }
   )
 }
 
-export function ReciboPrint({ datos }: ReciboPrintProps) {
+// ── Componente público ─────────────────────────────────────────────────────────
+
+export function ReciboPrint({ datos, medios }: ReciboPrintProps) {
+  const [showPreview, setShowPreview] = useState(false)
   const printRef = useRef<HTMLDivElement>(null)
 
   function handlePrint() {
@@ -199,19 +248,45 @@ export function ReciboPrint({ datos }: ReciboPrintProps) {
 
   return (
     <>
-      <Button variant="outline" size="sm" onClick={handlePrint}>
-        <Printer className="h-4 w-4" />
+      <Button variant="outline" size="sm" onClick={() => setShowPreview(true)}>
+        <Printer className="h-4 w-4 mr-1" />
         Imprimir PDF
       </Button>
 
-      {/* Hidden print content */}
+      {/* Vista previa */}
+      <Dialog open={showPreview} onOpenChange={setShowPreview}>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Vista previa — Recibo N° {datos.numero}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto border rounded bg-white text-black min-h-0">
+            <ReciboContenido datos={datos} medios={medios} copia="Original — Locador" />
+            <div style={{ borderTop: '1px dashed #999', margin: '8px 0', textAlign: 'center', fontSize: '11px', color: '#999', padding: '4px 0' }}>
+              ✂ &nbsp; Córtese por la línea &nbsp; ✂
+            </div>
+            <ReciboContenido datos={datos} medios={medios} copia="Duplicado — Locatario" />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowPreview(false)}>
+              <X className="h-4 w-4 mr-1" />
+              Cerrar
+            </Button>
+            <Button onClick={handlePrint}>
+              <Printer className="h-4 w-4 mr-1" />
+              Imprimir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Contenido oculto para impresión */}
       <div ref={printRef} style={{ display: 'none' }}>
         <div className="page-break">
-          <ReciboContenido datos={datos} copia="Original — Locador" />
+          <ReciboContenido datos={datos} medios={medios} copia="Original — Locador" />
         </div>
         <div className="divider">✂ &nbsp; Córtese por la línea &nbsp; ✂</div>
         <div className="page-break">
-          <ReciboContenido datos={datos} copia="Duplicado — Locatario" />
+          <ReciboContenido datos={datos} medios={medios} copia="Duplicado — Locatario" />
         </div>
       </div>
     </>

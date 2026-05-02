@@ -92,7 +92,7 @@ export default function ReciboDetailPage({
           <CardTitle>Detalle del recibo</CardTitle>
         </CardHeader>
         <CardContent>
-          <ReciboPrint datos={datos} />
+          <ReciboPrint datos={datos} medios={medios.length > 0 ? medios : undefined} />
         </CardContent>
       </Card>
 
