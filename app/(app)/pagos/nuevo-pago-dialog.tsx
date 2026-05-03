@@ -185,13 +185,13 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Pr
     let expensasPendientes = 0
     if (propiedadId && periodoInicio) {
       const { data: gastos } = await supabase
-        .from('gastos_mensuales')
-        .select('monto, detalle_gastos_unidad(monto_asignado, unidad_id)')
+        .from('gastos')
+        .select('monto, gasto_unidades(monto, unidad_id)')
         .eq('propiedad_id', propiedadId)
         .gte('periodo', periodoInicio)
       for (const g of (gastos ?? []) as any[]) {
-        const det = (g.detalle_gastos_unidad ?? []).find((d: any) => unidadIds.includes(d.unidad_id))
-        expensasPendientes += det?.monto_asignado ?? g.monto
+        const gu = (g.gasto_unidades ?? []).find((d: any) => unidadIds.includes(d.unidad_id))
+        expensasPendientes += gu?.monto ?? g.monto
       }
     }
 
@@ -242,9 +242,9 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Pr
       restante -= m
     }
 
-    imp('Alquiler mes actual', canon)
-    imp('Expensas pendientes', estadoCuenta.expensasPendientes)
+    imp('Alquiler adeudado', estadoCuenta.deudaAlquiler)
     imp('Depósito en garantía', estadoCuenta.deposito)
+    imp('Expensas pendientes', estadoCuenta.expensasPendientes)
     imp('Intereses / mora', estadoCuenta.intereses)
     if (restante > 0) items.push({ label: 'Saldo a favor', monto: restante, tipo: 'favor' })
     return items

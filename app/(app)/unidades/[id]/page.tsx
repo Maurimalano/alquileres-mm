@@ -171,6 +171,15 @@ export default function UnidadDetailPage({
   // Para mostrar: negativo significa deuda del inquilino → lo mostramos positivo con "Adeuda"
   const inquilinoDebeAlquiler = saldoAlquilerRaw < 0
   const montoDeudaAlquiler    = Math.abs(saldoAlquilerRaw)
+  // Saldo corrido por pago (calculado en cliente, ignoramos saldo_resultante de BD)
+  const pagosAscendente = [...pagos].sort((a, b) => a.periodo.localeCompare(b.periodo))
+  let _saldoCorrido = 0
+  const saldoPorPago = new Map<string, number>()
+  for (const p of pagosAscendente) {
+    _saldoCorrido += p.monto - canonUnidad
+    saldoPorPago.set(p.id, _saldoCorrido)
+  }
+
   // depósito pendiente como deuda adicional
   const depositoDeuda = deposito > 0 && !depositoPagado ? deposito : 0
   // saldoTotal: alquiler + expensas + depósito pendiente
@@ -439,11 +448,15 @@ export default function UnidadDetailPage({
                           {p.recibo_numero ?? '—'}
                         </TableCell>
                         <TableCell className="text-right">
-                          {p.saldo_resultante != null ? (
-                            <span className={p.saldo_resultante >= 0 ? 'text-green-600' : 'text-destructive'}>
-                              {p.saldo_resultante >= 0 ? '+' : ''}{formatCurrency(p.saldo_resultante)}
-                            </span>
-                          ) : '—'}
+                          {(() => {
+                            const s = saldoPorPago.get(p.id)
+                            if (s == null) return '—'
+                            return (
+                              <span className={s >= 0 ? 'text-green-600' : 'text-destructive'}>
+                                {s >= 0 ? '+' : ''}{formatCurrency(s)}
+                              </span>
+                            )
+                          })()}
                         </TableCell>
                       </TableRow>
                     )
