@@ -14,6 +14,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { EditUnidadDialog } from '../edit-unidad-dialog'
 import { formatCurrency } from '@/lib/format'
+import { TIPO_GASTO_LABELS } from '@/types/database'
 
 const estadoBadge: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' }> = {
   disponible:    { label: 'Disponible',    variant: 'default' },
@@ -115,18 +116,15 @@ export default function UnidadDetailPage({
 
           // ── Gastos de la propiedad desde el inicio del contrato ───────────
           const periodoInicio = contratoData.fecha_inicio.substring(0, 7)
-          const { data: gastosData, error: gastosError } = await supabase
-            .from('gastos_mensuales')
+          const { data: gastosData } = await supabase
+            .from('gastos')
             .select(`
-              id, periodo, monto,
-              tipos_gasto_propiedad(nombre),
-              detalle_gastos_unidad(monto_asignado, unidad_id)
+              id, periodo, monto, tipo_gasto, numero_comprobante,
+              gasto_unidades(monto, unidad_id)
             `)
             .eq('propiedad_id', unidadRes.data!.propiedad_id)
             .gte('periodo', periodoInicio)
             .order('periodo', { ascending: false })
-          if (gastosError) console.error('[gastos]', gastosError)
-          console.log('[gastos] propiedad_id:', unidadRes.data!.propiedad_id, 'periodoInicio:', periodoInicio, 'rows:', gastosData?.length)
           setGastosUnidad(gastosData ?? [])
         }
       }
@@ -166,8 +164,8 @@ export default function UnidadDetailPage({
   const totalEsperado = canonUnidad * meses
   const totalPagado   = pagos.filter(p => p.estado === 'pagado').reduce((s, p) => s + p.monto, 0)
   const mesesPagados  = new Set(pagos.filter(p => p.estado === 'pagado').map(p => p.periodo)).size
-  // saldo_resultante: negativo = inquilino debe, positivo = tiene saldo a favor
-  const saldoAlquilerRaw = pagos.find(p => p.saldo_resultante != null)?.saldo_resultante ?? (totalPagado - totalEsperado)
+  // Deuda real calculada desde cero: negativo = inquilino debe, positivo = a favor
+  const saldoAlquilerRaw = totalPagado - totalEsperado
   const deposito      = contrato?.deposito ?? 0
   const depositoPagado = contrato?.deposito_pagado ?? false
   // Para mostrar: negativo significa deuda del inquilino → lo mostramos positivo con "Adeuda"
@@ -383,16 +381,13 @@ export default function UnidadDetailPage({
               </TableHeader>
               <TableBody>
                 {gastosUnidad.map((g: any) => {
-                  const tipoNombre = Array.isArray(g.tipos_gasto_propiedad)
-                    ? g.tipos_gasto_propiedad[0]?.nombre
-                    : g.tipos_gasto_propiedad?.nombre
-                  const detalle = (g.detalle_gastos_unidad ?? []).find((d: any) => d.unidad_id === id)
-                  const monto = detalle?.monto_asignado ?? g.monto
+                  const detalle = (g.gasto_unidades ?? []).find((d: any) => d.unidad_id === id)
+                  const monto = detalle?.monto ?? g.monto
                   return (
                     <TableRow key={g.id}>
                       <TableCell className="font-mono">{g.periodo}</TableCell>
-                      <TableCell>{tipoNombre ?? '—'}</TableCell>
-                      <TableCell className="text-muted-foreground text-xs">—</TableCell>
+                      <TableCell>{(TIPO_GASTO_LABELS as any)[g.tipo_gasto] ?? g.tipo_gasto ?? '—'}</TableCell>
+                      <TableCell className="text-muted-foreground text-xs">{g.numero_comprobante ?? '—'}</TableCell>
                       <TableCell className="text-right font-medium">{formatCurrency(monto)}</TableCell>
                     </TableRow>
                   )

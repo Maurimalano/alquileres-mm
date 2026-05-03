@@ -44,12 +44,14 @@ interface MedioPago {
   importe: string
   cheque_titular: string
   cheque_numero: string
+  cheque_nro_cuenta: string
   cheque_vencimiento: string
   cheque_banco: string
   cheque_plaza: string
   cheque_cuit: string
   retencion_concepto: string
   retencion_numero: string
+  transferencia_banco: string
 }
 
 const emptyMedio = (): MedioPago => ({
@@ -57,12 +59,14 @@ const emptyMedio = (): MedioPago => ({
   importe: '',
   cheque_titular: '',
   cheque_numero: '',
+  cheque_nro_cuenta: '',
   cheque_vencimiento: '',
   cheque_banco: '',
   cheque_plaza: '',
   cheque_cuit: '',
   retencion_concepto: '',
   retencion_numero: '',
+  transferencia_banco: '',
 })
 
 const tipoLabel: Record<TipoMedio, string> = {
@@ -310,12 +314,14 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Pr
           importe:             Number(m.importe),
           cheque_titular:      m.cheque_titular || null,
           cheque_numero:       m.cheque_numero || null,
+          cheque_nro_cuenta:   m.cheque_nro_cuenta || null,
           cheque_vencimiento:  m.cheque_vencimiento || null,
           cheque_banco:        m.cheque_banco || null,
           cheque_plaza:        m.cheque_plaza || null,
           cheque_cuit:         m.cheque_cuit || null,
           retencion_concepto:  m.retencion_concepto || null,
           retencion_numero:    m.retencion_numero || null,
+          transferencia_banco: m.transferencia_banco || null,
         }))
       )
     }
@@ -576,6 +582,11 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Pr
                         value={m.cheque_numero} onChange={e => updateMedio(idx, 'cheque_numero', e.target.value)} />
                     </div>
                     <div className="space-y-1">
+                      <Label className="text-xs">Nro. de cuenta</Label>
+                      <Input placeholder="Cuenta bancaria"
+                        value={m.cheque_nro_cuenta} onChange={e => updateMedio(idx, 'cheque_nro_cuenta', e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
                       <Label className="text-xs">Vencimiento</Label>
                       <Input type="date"
                         value={m.cheque_vencimiento} onChange={e => updateMedio(idx, 'cheque_vencimiento', e.target.value)} />
@@ -594,6 +605,17 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Pr
                       <Label className="text-xs">CUIT</Label>
                       <Input placeholder="CUIT emisor"
                         value={m.cheque_cuit} onChange={e => updateMedio(idx, 'cheque_cuit', e.target.value)} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Campo de banco para transferencia */}
+                {m.tipo === 'transferencia' && (
+                  <div className="pt-1">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Banco</Label>
+                      <Input placeholder="Banco origen"
+                        value={m.transferencia_banco} onChange={e => updateMedio(idx, 'transferencia_banco', e.target.value)} />
                     </div>
                   </div>
                 )}
