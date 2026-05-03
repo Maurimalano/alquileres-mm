@@ -132,45 +132,71 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Pr
     setLoadingEstado(true)
     const supabase = createClient()
 
-    const [contratoRes, ultimoPagoRes] = await Promise.all([
+    // Ronda 1: contrato completo + todos los pagos pagados
+    const [contratoRes, pagosRes] = await Promise.all([
       supabase
         .from('contratos')
-        .select('id, monto_mensual, deposito, deposito_pagado, tasa_interes, tasa_interes_tipo, dia_vencimiento, contrato_unidades(unidad_id)')
+        .select(`
+          id, monto_mensual, deposito, deposito_pagado,
+          tasa_interes, tasa_interes_tipo, dia_vencimiento,
+          fecha_inicio, fecha_fin,
+          contrato_unidades(unidad_id, unidades(propiedad_id))
+        `)
         .eq('id', contratoId)
         .single(),
       supabase
         .from('pagos')
-        .select('saldo_resultante')
+        .select('monto')
         .eq('contrato_id', contratoId)
-        .not('saldo_resultante', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
+        .eq('estado', 'pagado'),
     ])
 
     const cd = contratoRes.data
-    const saldoAnterior = ultimoPagoRes.data?.saldo_resultante ?? 0
-    const deudaAlquiler = saldoAnterior < 0 ? Math.abs(saldoAnterior) : 0
+    const totalPagado = (pagosRes.data ?? []).reduce((s: number, p: any) => s + p.monto, 0)
 
-    // Expensas pendientes para las unidades del contrato
-    const unidadIds = (cd?.contrato_unidades ?? []).map((cu: any) => cu.unidad_id).filter(Boolean)
+    // Deuda real: meses transcurridos × canon − total pagado
+    const calcMeses = (inicio: string, fin: string): number => {
+      const d0  = new Date(inicio + 'T00:00:00')
+      const hoy = new Date()
+      const d1  = new Date(fin + 'T00:00:00')
+      const hasta = hoy < d1 ? hoy : d1
+      if (hasta < d0) return 0
+      return Math.max(0,
+        (hasta.getFullYear() - d0.getFullYear()) * 12 +
+        (hasta.getMonth() - d0.getMonth()) + 1
+      )
+    }
+    const meses        = cd?.fecha_inicio ? calcMeses(cd.fecha_inicio, cd.fecha_fin ?? '') : 0
+    const canonMensual = cd?.monto_mensual ?? 0
+    const esperado     = meses * canonMensual
+    const deudaAlquiler = Math.max(0, esperado - totalPagado)
+    const saldoAlquiler = totalPagado - esperado  // negativo = debe
+
+    // Gastos de la propiedad desde inicio del contrato
+    const periodoInicio = cd?.fecha_inicio?.substring(0, 7) ?? ''
+    const unidadIds     = (cd?.contrato_unidades ?? []).map((cu: any) => cu.unidad_id).filter(Boolean)
+    const propiedadId   = (cd?.contrato_unidades ?? [])[0]?.unidades?.propiedad_id
+
     let expensasPendientes = 0
-    if (unidadIds.length > 0) {
-      const { data: exp } = await supabase
-        .from('expensa_unidades')
-        .select('monto')
-        .in('unidad_id', unidadIds)
-        .eq('cobrado', false)
-      expensasPendientes = (exp ?? []).reduce((s: number, e: any) => s + e.monto, 0)
+    if (propiedadId && periodoInicio) {
+      const { data: gastos } = await supabase
+        .from('gastos_mensuales')
+        .select('monto, detalle_gastos_unidad(monto_asignado, unidad_id)')
+        .eq('propiedad_id', propiedadId)
+        .gte('periodo', periodoInicio)
+      for (const g of (gastos ?? []) as any[]) {
+        const det = (g.detalle_gastos_unidad ?? []).find((d: any) => unidadIds.includes(d.unidad_id))
+        expensasPendientes += det?.monto_asignado ?? g.monto
+      }
     }
 
-    // Intereses por mora si hay deuda
+    // Intereses por mora
     const tasa     = cd?.tasa_interes ?? 0
     const tipoTasa = cd?.tasa_interes_tipo ?? 'mensual'
     let intereses  = 0
     if (deudaAlquiler > 0 && tasa > 0) {
-      const hoy    = new Date()
-      const dia    = cd?.dia_vencimiento ?? 10
+      const hoy = new Date()
+      const dia = cd?.dia_vencimiento ?? 10
       const fechaVenc = hoy.getDate() > dia
         ? new Date(hoy.getFullYear(), hoy.getMonth(), dia)
         : new Date(hoy.getFullYear(), hoy.getMonth() - 1, dia)
@@ -186,12 +212,12 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Pr
     const depositoPendiente = !cd?.deposito_pagado && (cd?.deposito ?? 0) > 0 ? (cd?.deposito ?? 0) : 0
 
     setEstadoCuenta({
-      saldoAnterior,
+      saldoAnterior:      saldoAlquiler,
       deudaAlquiler,
       expensasPendientes,
-      deposito:    depositoPendiente,
+      deposito:           depositoPendiente,
       intereses,
-      tasaInteres: tasa,
+      tasaInteres:        tasa,
       total: deudaAlquiler + expensasPendientes + depositoPendiente + intereses,
     })
     setLoadingEstado(false)
@@ -417,13 +443,13 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Pr
             <div className="rounded-md border bg-muted/30 p-3 space-y-2 text-sm">
               <p className="font-semibold text-xs uppercase tracking-wide text-muted-foreground">Estado de cuenta</p>
               <div className="space-y-1">
-                {/* Saldo anterior */}
+                {/* Alquiler adeudado */}
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Saldo anterior</span>
-                  <span className={estadoCuenta.saldoAnterior < 0 ? 'text-destructive font-medium' : 'text-green-600 font-medium'}>
-                    {estadoCuenta.saldoAnterior < 0
-                      ? `Adeuda ${fmtCurrency(estadoCuenta.deudaAlquiler)}`
-                      : estadoCuenta.saldoAnterior > 0 ? `+${fmtCurrency(estadoCuenta.saldoAnterior)}` : 'Al día'}
+                  <span className="text-muted-foreground">Alquiler adeudado</span>
+                  <span className={estadoCuenta.deudaAlquiler > 0 ? 'text-destructive font-medium' : 'text-green-600 font-medium'}>
+                    {estadoCuenta.deudaAlquiler > 0
+                      ? fmtCurrency(estadoCuenta.deudaAlquiler)
+                      : estadoCuenta.saldoAnterior >= 0 ? `+${fmtCurrency(estadoCuenta.saldoAnterior)} a favor` : 'Al día'}
                   </span>
                 </div>
                 {/* Expensas */}
