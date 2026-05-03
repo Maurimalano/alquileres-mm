@@ -175,7 +175,8 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Pr
     // Gastos de la propiedad desde inicio del contrato
     const periodoInicio = cd?.fecha_inicio?.substring(0, 7) ?? ''
     const unidadIds     = (cd?.contrato_unidades ?? []).map((cu: any) => cu.unidad_id).filter(Boolean)
-    const propiedadId   = (cd?.contrato_unidades ?? [])[0]?.unidades?.propiedad_id
+    const firstUnidad   = (cd?.contrato_unidades ?? [])[0]?.unidades
+    const propiedadId   = Array.isArray(firstUnidad) ? firstUnidad[0]?.propiedad_id : (firstUnidad as any)?.propiedad_id
 
     let expensasPendientes = 0
     if (propiedadId && periodoInicio) {
@@ -441,7 +442,7 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Pr
           )}
           {estadoCuenta && !loadingEstado && (
             <div className="rounded-md border bg-muted/30 p-3 space-y-2 text-sm">
-              <p className="font-semibold text-xs uppercase tracking-wide text-muted-foreground">Estado de cuenta</p>
+              <p className="font-semibold text-xs uppercase tracking-wide text-muted-foreground">Estado de cuenta del inquilino</p>
               <div className="space-y-1">
                 {/* Alquiler adeudado */}
                 <div className="flex justify-between">
