@@ -58,6 +58,7 @@ export default function UnidadDetailPage({
   const [contratoUnidad, setContratoUnidad] = useState<any>(null)
   const [pagos, setPagos]                   = useState<any[]>([])
   const [expensasPendientes, setExpensasPendientes] = useState(0)
+  const [gastosUnidad, setGastosUnidad]             = useState<any[]>([])
   const [openEdit, setOpenEdit]             = useState(false)
   const [loading, setLoading]               = useState(true)
 
@@ -111,6 +112,25 @@ export default function UnidadDetailPage({
             .eq('contrato_id', contratoData.id)
             .order('periodo', { ascending: false })
           setPagos(pagosData || [])
+
+          // ── Gastos imputables desde el inicio del contrato ─────────────
+          const periodoInicio = contratoData.fecha_inicio.substring(0, 7)
+          const { data: gastosData } = await supabase
+            .from('detalle_gastos_unidad')
+            .select(`
+              monto_asignado,
+              gastos_mensuales(
+                periodo, propiedad_id,
+                tipos_gasto_propiedad(nombre)
+              )
+            `)
+            .eq('unidad_id', id)
+          const gastosFiltrados = (gastosData ?? [])
+            .filter((g: any) => (g.gastos_mensuales?.periodo ?? '') >= periodoInicio)
+            .sort((a: any, b: any) =>
+              (b.gastos_mensuales?.periodo ?? '').localeCompare(a.gastos_mensuales?.periodo ?? '')
+            )
+          setGastosUnidad(gastosFiltrados)
         }
       }
 
@@ -149,10 +169,16 @@ export default function UnidadDetailPage({
   const totalEsperado = canonUnidad * meses
   const totalPagado   = pagos.filter(p => p.estado === 'pagado').reduce((s, p) => s + p.monto, 0)
   const mesesPagados  = new Set(pagos.filter(p => p.estado === 'pagado').map(p => p.periodo)).size
-  const saldoAlquiler = pagos.find(p => p.saldo_resultante != null)?.saldo_resultante ?? (totalPagado - totalEsperado)
+  // saldo_resultante: negativo = inquilino debe, positivo = tiene saldo a favor
+  const saldoAlquilerRaw = pagos.find(p => p.saldo_resultante != null)?.saldo_resultante ?? (totalPagado - totalEsperado)
   const deposito      = contrato?.deposito ?? 0
   const depositoPagado = contrato?.deposito_pagado ?? false
-  const saldoTotal    = saldoAlquiler - expensasPendientes
+  // Para mostrar: negativo significa deuda del inquilino → lo mostramos positivo con "Adeuda"
+  const inquilinoDebeAlquiler = saldoAlquilerRaw < 0
+  const montoDeudaAlquiler    = Math.abs(saldoAlquilerRaw)
+  // saldoTotal: combinamos alquiler y expensas (ambos como deuda = positivo)
+  const deudaTotal = (inquilinoDebeAlquiler ? montoDeudaAlquiler : 0) + expensasPendientes
+  const saldoTotalAFavor = !inquilinoDebeAlquiler ? saldoAlquilerRaw - expensasPendientes : 0
   const dias          = contrato ? diasHastaFin(contrato.fecha_fin) : null
 
   return (
@@ -269,11 +295,11 @@ export default function UnidadDetailPage({
               {/* Saldo de alquiler */}
               <div className="rounded-md border p-3 space-y-1">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide">Saldo alquiler</p>
-                <p className={`text-xl font-bold ${saldoAlquiler >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                  {saldoAlquiler >= 0 ? '+' : ''}{formatCurrency(saldoAlquiler)}
+                <p className={`text-xl font-bold ${inquilinoDebeAlquiler ? 'text-destructive' : 'text-green-600'}`}>
+                  {inquilinoDebeAlquiler ? '' : '+'}{formatCurrency(inquilinoDebeAlquiler ? montoDeudaAlquiler : saldoAlquilerRaw)}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {saldoAlquiler >= 0 ? 'A favor' : 'Adeuda'}
+                  {inquilinoDebeAlquiler ? 'Adeuda' : 'A favor'}
                 </p>
               </div>
 
@@ -306,10 +332,17 @@ export default function UnidadDetailPage({
               {/* Saldo total */}
               <div className="rounded-md border p-3 space-y-1 bg-muted/30">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide">Saldo total</p>
-                <p className={`text-xl font-bold ${saldoTotal >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                  {saldoTotal >= 0 ? '+' : ''}{formatCurrency(saldoTotal)}
-                </p>
-                <p className="text-xs text-muted-foreground">Alquiler + expensas</p>
+                {deudaTotal > 0 ? (
+                  <>
+                    <p className="text-xl font-bold text-destructive">{formatCurrency(deudaTotal)}</p>
+                    <p className="text-xs text-muted-foreground">Adeuda en total</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xl font-bold text-green-600">+{formatCurrency(Math.max(0, saldoTotalAFavor))}</p>
+                    <p className="text-xs text-muted-foreground">A favor</p>
+                  </>
+                )}
               </div>
             </div>
 
@@ -328,6 +361,35 @@ export default function UnidadDetailPage({
                 </div>
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Gastos a cargo del inquilino */}
+      {contrato && gastosUnidad.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Gastos a cargo del inquilino ({gastosUnidad.length})</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Período</TableHead>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead className="text-right">Monto asignado</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {gastosUnidad.map((g: any, i: number) => (
+                  <TableRow key={g.id ?? i}>
+                    <TableCell className="font-mono">{g.gastos_mensuales?.periodo ?? '—'}</TableCell>
+                    <TableCell>{g.gastos_mensuales?.tipos_gasto_propiedad?.nombre ?? '—'}</TableCell>
+                    <TableCell className="text-right font-medium">{formatCurrency(g.monto_asignado)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       )}
