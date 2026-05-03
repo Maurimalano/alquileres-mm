@@ -16,8 +16,8 @@ import { EditUnidadDialog } from '../edit-unidad-dialog'
 import { formatCurrency } from '@/lib/format'
 
 const estadoBadge: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' }> = {
-  disponible: { label: 'Disponible', variant: 'default' },
-  ocupada:    { label: 'Ocupada',    variant: 'secondary' },
+  disponible:    { label: 'Disponible',    variant: 'default' },
+  ocupada:       { label: 'Ocupada',       variant: 'secondary' },
   mantenimiento: { label: 'Mantenimiento', variant: 'destructive' },
 }
 
@@ -40,18 +40,26 @@ function mesesTranscurridos(fechaInicio: string, fechaFin: string): number {
   )
 }
 
+function diasHastaFin(fechaFin: string): number {
+  const hoy = new Date()
+  hoy.setHours(0, 0, 0, 0)
+  const fin = new Date(fechaFin + 'T00:00:00')
+  return Math.ceil((fin.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24))
+}
+
 export default function UnidadDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>
 }) {
-  const router  = useRouter()
-  const [unidad, setUnidad]               = useState<any>(null)
-  const [propiedades, setPropiedades]     = useState<any[]>([])
+  const router = useRouter()
+  const [unidad, setUnidad]                 = useState<any>(null)
+  const [propiedades, setPropiedades]       = useState<any[]>([])
   const [contratoUnidad, setContratoUnidad] = useState<any>(null)
-  const [pagos, setPagos]                 = useState<any[]>([])
-  const [openEdit, setOpenEdit]           = useState(false)
-  const [loading, setLoading]             = useState(true)
+  const [pagos, setPagos]                   = useState<any[]>([])
+  const [expensasPendientes, setExpensasPendientes] = useState(0)
+  const [openEdit, setOpenEdit]             = useState(false)
+  const [loading, setLoading]               = useState(true)
 
   const { id } = use(params)
 
@@ -68,30 +76,52 @@ export default function UnidadDetailPage({
       setUnidad(unidadRes.data)
       setPropiedades(propiedadesRes.data || [])
 
-      // Contrato activo para esta unidad
-      const { data: cu } = await supabase
+      // ── Paso 1: buscar contrato_unidades para esta unidad ────────────────
+      // (separado del filtro de estado para evitar el bug del join embebido)
+      const { data: cuRows } = await supabase
         .from('contrato_unidades')
-        .select(`
-          monto_mensual,
-          contratos!inner(
+        .select('contrato_id, monto_mensual')
+        .eq('unidad_id', id)
+
+      const contratoIds = (cuRows ?? []).map(cu => cu.contrato_id).filter(Boolean)
+
+      if (contratoIds.length > 0) {
+        // ── Paso 2: buscar el contrato activo entre los IDs encontrados ────
+        const { data: contratoData } = await supabase
+          .from('contratos')
+          .select(`
             id, fecha_inicio, fecha_fin, estado, monto_mensual, deposito, deposito_pagado,
             inquilinos(nombre, apellido)
-          )
-        `)
-        .eq('unidad_id', id)
-        .eq('contratos.estado', 'activo')
-        .maybeSingle()
+          `)
+          .eq('estado', 'activo')
+          .in('id', contratoIds)
+          .maybeSingle()
 
-      if (cu) {
-        setContratoUnidad(cu)
-        const contratoId = (cu.contratos as any).id
-        const { data: pagosData } = await supabase
-          .from('pagos')
-          .select('id, periodo, monto, fecha_pago, estado, forma_pago, recibo_numero, saldo_anterior, saldo_resultante')
-          .eq('contrato_id', contratoId)
-          .order('periodo', { ascending: false })
-        setPagos(pagosData || [])
+        if (contratoData) {
+          const cuRow = cuRows!.find(cu => cu.contrato_id === contratoData.id)
+          setContratoUnidad({
+            monto_mensual: cuRow?.monto_mensual ?? 0,
+            contratos: contratoData,
+          })
+
+          // Pagos del contrato
+          const { data: pagosData } = await supabase
+            .from('pagos')
+            .select('id, periodo, monto, fecha_pago, estado, forma_pago, recibo_numero, saldo_anterior, saldo_resultante')
+            .eq('contrato_id', contratoData.id)
+            .order('periodo', { ascending: false })
+          setPagos(pagosData || [])
+        }
       }
+
+      // ── Expensas pendientes para esta unidad ─────────────────────────────
+      const { data: expensasData } = await supabase
+        .from('expensa_unidades')
+        .select('monto, cobrado')
+        .eq('unidad_id', id)
+        .eq('cobrado', false)
+      const pendiente = (expensasData ?? []).reduce((s, e) => s + e.monto, 0)
+      setExpensasPendientes(pendiente)
 
       setLoading(false)
     }
@@ -113,13 +143,17 @@ export default function UnidadDetailPage({
   const contrato = contratoUnidad ? (contratoUnidad.contratos as any) : null
   const inquilino = contrato?.inquilinos
 
-  // Saldo
-  const canonUnidad     = contratoUnidad?.monto_mensual ?? 0
-  const meses           = contrato ? mesesTranscurridos(contrato.fecha_inicio, contrato.fecha_fin) : 0
-  const totalEsperado   = canonUnidad * meses
-  const totalPagado     = pagos.filter(p => p.estado === 'pagado').reduce((s, p) => s + p.monto, 0)
-  const saldo           = totalPagado - totalEsperado
-  const ultimoSaldoDB   = pagos.find(p => p.saldo_resultante != null)?.saldo_resultante
+  // Cálculos financieros
+  const canonUnidad   = contratoUnidad?.monto_mensual ?? 0
+  const meses         = contrato ? mesesTranscurridos(contrato.fecha_inicio, contrato.fecha_fin) : 0
+  const totalEsperado = canonUnidad * meses
+  const totalPagado   = pagos.filter(p => p.estado === 'pagado').reduce((s, p) => s + p.monto, 0)
+  const mesesPagados  = new Set(pagos.filter(p => p.estado === 'pagado').map(p => p.periodo)).size
+  const saldoAlquiler = pagos.find(p => p.saldo_resultante != null)?.saldo_resultante ?? (totalPagado - totalEsperado)
+  const deposito      = contrato?.deposito ?? 0
+  const depositoPagado = contrato?.deposito_pagado ?? false
+  const saldoTotal    = saldoAlquiler - expensasPendientes
+  const dias          = contrato ? diasHastaFin(contrato.fecha_fin) : null
 
   return (
     <div className="space-y-6">
@@ -183,13 +217,33 @@ export default function UnidadDetailPage({
                   <span className="font-medium">{value}</span>
                 </div>
               ))}
-              {contrato.deposito > 0 && (
+              {/* Vencimiento */}
+              {dias != null && (
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Vence en</span>
+                  <span className={`font-medium ${dias < 30 ? 'text-destructive' : dias < 90 ? 'text-amber-600' : ''}`}>
+                    {dias > 0 ? `${dias} días` : dias === 0 ? 'Hoy' : `Vencido hace ${Math.abs(dias)} días`}
+                  </span>
+                </div>
+              )}
+              {/* Meses pagados vs transcurridos */}
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Meses pagados</span>
+                <span className="font-medium">
+                  {mesesPagados} / {meses}
+                  {mesesPagados < meses && (
+                    <span className="text-destructive ml-1 text-xs">({meses - mesesPagados} adeudado{meses - mesesPagados !== 1 ? 's' : ''})</span>
+                  )}
+                </span>
+              </div>
+              {/* Depósito */}
+              {deposito > 0 && (
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Depósito</span>
                   <div className="flex items-center gap-2">
-                    <span className="font-medium">{formatCurrency(contrato.deposito)}</span>
-                    <Badge variant={contrato.deposito_pagado ? 'default' : 'destructive'}>
-                      {contrato.deposito_pagado ? 'Cobrado' : 'Pendiente'}
+                    <span className="font-medium">{formatCurrency(deposito)}</span>
+                    <Badge variant={depositoPagado ? 'default' : 'destructive'}>
+                      {depositoPagado ? 'Cobrado' : 'Pendiente'}
                     </Badge>
                   </div>
                 </div>
@@ -200,45 +254,80 @@ export default function UnidadDetailPage({
           <Card>
             <CardHeader><CardTitle>Contrato activo</CardTitle></CardHeader>
             <CardContent className="text-sm text-muted-foreground">
-              Sin contrato activo.
+              Sin contrato activo para esta unidad.
             </CardContent>
           </Card>
         )}
       </div>
 
-      {/* Saldo */}
+      {/* Estado financiero */}
       {contrato && (
         <Card>
-          <CardHeader><CardTitle>Saldo</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Estado financiero</CardTitle></CardHeader>
           <CardContent>
-            <div className="grid gap-4 sm:grid-cols-4 text-sm">
-              <div>
-                <p className="text-muted-foreground">Meses transcurridos</p>
-                <p className="text-xl font-bold">{meses}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Total esperado</p>
-                <p className="text-xl font-bold">{formatCurrency(totalEsperado)}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Total cobrado</p>
-                <p className="text-xl font-bold">{formatCurrency(totalPagado)}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Saldo</p>
-                <p className={`text-xl font-bold ${saldo >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                  {saldo >= 0 ? '+' : ''}{formatCurrency(saldo)}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+              {/* Saldo de alquiler */}
+              <div className="rounded-md border p-3 space-y-1">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Saldo alquiler</p>
+                <p className={`text-xl font-bold ${saldoAlquiler >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                  {saldoAlquiler >= 0 ? '+' : ''}{formatCurrency(saldoAlquiler)}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {saldo >= 0 ? 'A favor' : 'Deudor'}
+                  {saldoAlquiler >= 0 ? 'A favor' : 'Adeuda'}
                 </p>
-                {ultimoSaldoDB != null && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Último registrado: {ultimoSaldoDB >= 0 ? '+' : ''}{formatCurrency(ultimoSaldoDB)}
-                  </p>
+              </div>
+
+              {/* Expensas pendientes */}
+              <div className="rounded-md border p-3 space-y-1">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Expensas pendientes</p>
+                <p className={`text-xl font-bold ${expensasPendientes === 0 ? 'text-green-600' : 'text-destructive'}`}>
+                  {expensasPendientes === 0 ? 'Al día' : `-${formatCurrency(expensasPendientes)}`}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {expensasPendientes === 0 ? 'Sin deuda' : 'Sin cobrar'}
+                </p>
+              </div>
+
+              {/* Depósito */}
+              <div className="rounded-md border p-3 space-y-1">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Depósito garantía</p>
+                {deposito > 0 ? (
+                  <>
+                    <p className="text-xl font-bold">{formatCurrency(deposito)}</p>
+                    <Badge variant={depositoPagado ? 'default' : 'destructive'} className="text-xs">
+                      {depositoPagado ? 'Cobrado' : 'Pendiente'}
+                    </Badge>
+                  </>
+                ) : (
+                  <p className="text-xl font-bold text-muted-foreground">Sin depósito</p>
                 )}
               </div>
+
+              {/* Saldo total */}
+              <div className="rounded-md border p-3 space-y-1 bg-muted/30">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Saldo total</p>
+                <p className={`text-xl font-bold ${saldoTotal >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                  {saldoTotal >= 0 ? '+' : ''}{formatCurrency(saldoTotal)}
+                </p>
+                <p className="text-xs text-muted-foreground">Alquiler + expensas</p>
+              </div>
             </div>
+
+            {/* Barra de progreso meses */}
+            {meses > 0 && (
+              <div className="mt-4 space-y-1">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>{mesesPagados} mes{mesesPagados !== 1 ? 'es' : ''} pagado{mesesPagados !== 1 ? 's' : ''}</span>
+                  <span>{meses} mes{meses !== 1 ? 'es' : ''} transcurrido{meses !== 1 ? 's' : ''}</span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${mesesPagados >= meses ? 'bg-green-500' : 'bg-destructive'}`}
+                    style={{ width: `${Math.min(100, meses > 0 ? (mesesPagados / meses) * 100 : 0)}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -260,7 +349,7 @@ export default function UnidadDetailPage({
                     <TableHead>Forma</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead>Recibo</TableHead>
-                    <TableHead className="text-right">Saldo resultante</TableHead>
+                    <TableHead className="text-right">Saldo</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -271,9 +360,7 @@ export default function UnidadDetailPage({
                         <TableCell className="font-mono">{p.periodo}</TableCell>
                         <TableCell className="text-right font-medium">{formatCurrency(p.monto)}</TableCell>
                         <TableCell>
-                          {p.fecha_pago
-                            ? new Date(p.fecha_pago).toLocaleDateString('es-AR')
-                            : '—'}
+                          {p.fecha_pago ? new Date(p.fecha_pago).toLocaleDateString('es-AR') : '—'}
                         </TableCell>
                         <TableCell className="capitalize">{p.forma_pago ?? '—'}</TableCell>
                         <TableCell>
