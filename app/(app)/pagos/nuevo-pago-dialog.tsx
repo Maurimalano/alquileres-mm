@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -75,10 +75,22 @@ const tipoLabel: Record<TipoMedio, string> = {
 const fmtCurrency = (n: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n)
 
+interface EstadoCuenta {
+  saldoAnterior:       number  // negativo = debe, positivo = a favor
+  deudaAlquiler:       number  // Math.abs(saldoAnterior) cuando debe
+  expensasPendientes:  number
+  deposito:            number  // 0 si ya está pagado
+  intereses:           number
+  tasaInteres:         number
+  total:               number
+}
+
 export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Props) {
   const router = useRouter()
-  const [open, setOpen]       = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [open, setOpen]               = useState(false)
+  const [loading, setLoading]         = useState(false)
+  const [estadoCuenta, setEstadoCuenta]   = useState<EstadoCuenta | null>(null)
+  const [loadingEstado, setLoadingEstado] = useState(false)
   const [form, setForm] = useState({
     contrato_id: '',
     periodo:     periodoActual(),
@@ -112,7 +124,100 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Pr
       notas:       '',
     })
     setMedios([emptyMedio()])
+    setEstadoCuenta(null)
   }
+
+  const fetchEstadoCuenta = useCallback(async (contratoId: string) => {
+    if (!contratoId) { setEstadoCuenta(null); return }
+    setLoadingEstado(true)
+    const supabase = createClient()
+
+    const [contratoRes, ultimoPagoRes] = await Promise.all([
+      supabase
+        .from('contratos')
+        .select('id, monto_mensual, deposito, deposito_pagado, tasa_interes, tasa_interes_tipo, dia_vencimiento, contrato_unidades(unidad_id)')
+        .eq('id', contratoId)
+        .single(),
+      supabase
+        .from('pagos')
+        .select('saldo_resultante')
+        .eq('contrato_id', contratoId)
+        .not('saldo_resultante', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
+
+    const cd = contratoRes.data
+    const saldoAnterior = ultimoPagoRes.data?.saldo_resultante ?? 0
+    const deudaAlquiler = saldoAnterior < 0 ? Math.abs(saldoAnterior) : 0
+
+    // Expensas pendientes para las unidades del contrato
+    const unidadIds = (cd?.contrato_unidades ?? []).map((cu: any) => cu.unidad_id).filter(Boolean)
+    let expensasPendientes = 0
+    if (unidadIds.length > 0) {
+      const { data: exp } = await supabase
+        .from('expensa_unidades')
+        .select('monto')
+        .in('unidad_id', unidadIds)
+        .eq('cobrado', false)
+      expensasPendientes = (exp ?? []).reduce((s: number, e: any) => s + e.monto, 0)
+    }
+
+    // Intereses por mora si hay deuda
+    const tasa     = cd?.tasa_interes ?? 0
+    const tipoTasa = cd?.tasa_interes_tipo ?? 'mensual'
+    let intereses  = 0
+    if (deudaAlquiler > 0 && tasa > 0) {
+      const hoy    = new Date()
+      const dia    = cd?.dia_vencimiento ?? 10
+      const fechaVenc = hoy.getDate() > dia
+        ? new Date(hoy.getFullYear(), hoy.getMonth(), dia)
+        : new Date(hoy.getFullYear(), hoy.getMonth() - 1, dia)
+      const diasMora = Math.max(0, Math.floor((hoy.getTime() - fechaVenc.getTime()) / 86400000))
+      if (diasMora > 0) {
+        intereses = tipoTasa === 'diaria'
+          ? deudaAlquiler * (tasa / 100) * diasMora
+          : deudaAlquiler * (tasa / 100) * (diasMora / 30)
+        intereses = Math.round(intereses)
+      }
+    }
+
+    const depositoPendiente = !cd?.deposito_pagado && (cd?.deposito ?? 0) > 0 ? (cd?.deposito ?? 0) : 0
+
+    setEstadoCuenta({
+      saldoAnterior,
+      deudaAlquiler,
+      expensasPendientes,
+      deposito:    depositoPendiente,
+      intereses,
+      tasaInteres: tasa,
+      total: deudaAlquiler + expensasPendientes + depositoPendiente + intereses,
+    })
+    setLoadingEstado(false)
+  }, [])
+
+  // Imputación automática del pago
+  const imputacion = (() => {
+    if (!estadoCuenta || totalMonto <= 0) return null
+    const canon = contratoSeleccionado?.monto_mensual ?? 0
+    const items: { label: string; monto: number; tipo: 'deuda' | 'favor' }[] = []
+    let restante = totalMonto
+
+    const imp = (label: string, maximo: number) => {
+      if (restante <= 0 || maximo <= 0) return
+      const m = Math.min(restante, maximo)
+      items.push({ label, monto: m, tipo: 'deuda' })
+      restante -= m
+    }
+
+    imp('Alquiler mes actual', canon)
+    imp('Expensas pendientes', estadoCuenta.expensasPendientes)
+    imp('Depósito en garantía', estadoCuenta.deposito)
+    imp('Intereses / mora', estadoCuenta.intereses)
+    if (restante > 0) items.push({ label: 'Saldo a favor', monto: restante, tipo: 'favor' })
+    return items
+  })()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -292,7 +397,7 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Pr
             <Label>Contrato</Label>
             <Select
               value={form.contrato_id}
-              onValueChange={v => setForm({ ...form, contrato_id: v })}
+              onValueChange={v => { setForm({ ...form, contrato_id: v }); fetchEstadoCuenta(v) }}
               required
             >
               <SelectTrigger><SelectValue placeholder="Seleccioná un contrato" /></SelectTrigger>
@@ -303,6 +408,57 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Pr
               </SelectContent>
             </Select>
           </div>
+
+          {/* Estado de cuenta del inquilino */}
+          {loadingEstado && (
+            <p className="text-xs text-muted-foreground">Cargando estado de cuenta...</p>
+          )}
+          {estadoCuenta && !loadingEstado && (
+            <div className="rounded-md border bg-muted/30 p-3 space-y-2 text-sm">
+              <p className="font-semibold text-xs uppercase tracking-wide text-muted-foreground">Estado de cuenta</p>
+              <div className="space-y-1">
+                {/* Saldo anterior */}
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Saldo anterior</span>
+                  <span className={estadoCuenta.saldoAnterior < 0 ? 'text-destructive font-medium' : 'text-green-600 font-medium'}>
+                    {estadoCuenta.saldoAnterior < 0
+                      ? `Adeuda ${fmtCurrency(estadoCuenta.deudaAlquiler)}`
+                      : estadoCuenta.saldoAnterior > 0 ? `+${fmtCurrency(estadoCuenta.saldoAnterior)}` : 'Al día'}
+                  </span>
+                </div>
+                {/* Expensas */}
+                {estadoCuenta.expensasPendientes > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Expensas pendientes</span>
+                    <span className="text-destructive font-medium">{fmtCurrency(estadoCuenta.expensasPendientes)}</span>
+                  </div>
+                )}
+                {/* Depósito */}
+                {estadoCuenta.deposito > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Depósito pendiente</span>
+                    <span className="text-destructive font-medium">{fmtCurrency(estadoCuenta.deposito)}</span>
+                  </div>
+                )}
+                {/* Intereses */}
+                {estadoCuenta.intereses > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Intereses mora ({estadoCuenta.tasaInteres}%)</span>
+                    <span className="text-destructive font-medium">{fmtCurrency(estadoCuenta.intereses)}</span>
+                  </div>
+                )}
+              </div>
+              {estadoCuenta.total > 0 && (
+                <div className="flex justify-between border-t pt-2 font-semibold">
+                  <span>Total adeudado</span>
+                  <span className="text-destructive">{fmtCurrency(estadoCuenta.total)}</span>
+                </div>
+              )}
+              {estadoCuenta.total === 0 && estadoCuenta.saldoAnterior >= 0 && (
+                <p className="text-green-600 text-xs font-medium">✓ Sin deuda pendiente</p>
+              )}
+            </div>
+          )}
 
           {/* Período y fecha */}
           <div className="grid grid-cols-2 gap-4">
@@ -440,6 +596,21 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Pr
               </div>
             )}
           </div>
+
+          {/* Imputación automática */}
+          {imputacion && imputacion.length > 0 && (
+            <div className="rounded-md border bg-muted/20 p-3 space-y-1 text-sm">
+              <p className="font-semibold text-xs uppercase tracking-wide text-muted-foreground mb-2">Imputación del pago</p>
+              {imputacion.map((item, i) => (
+                <div key={i} className="flex justify-between">
+                  <span className="text-muted-foreground">{item.label}</span>
+                  <span className={item.tipo === 'favor' ? 'text-green-600 font-medium' : 'font-medium'}>
+                    {item.tipo === 'favor' ? '+' : ''}{fmtCurrency(item.monto)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
 
           <Separator />
 
