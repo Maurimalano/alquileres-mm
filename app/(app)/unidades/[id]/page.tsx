@@ -115,7 +115,7 @@ export default function UnidadDetailPage({
 
           // ── Gastos de la propiedad desde el inicio del contrato ───────────
           const periodoInicio = contratoData.fecha_inicio.substring(0, 7)
-          const { data: gastosData } = await supabase
+          const { data: gastosData, error: gastosError } = await supabase
             .from('gastos_mensuales')
             .select(`
               id, periodo, monto,
@@ -125,6 +125,8 @@ export default function UnidadDetailPage({
             .eq('propiedad_id', unidadRes.data!.propiedad_id)
             .gte('periodo', periodoInicio)
             .order('periodo', { ascending: false })
+          if (gastosError) console.error('[gastos]', gastosError)
+          console.log('[gastos] propiedad_id:', unidadRes.data!.propiedad_id, 'periodoInicio:', periodoInicio, 'rows:', gastosData?.length)
           setGastosUnidad(gastosData ?? [])
         }
       }
@@ -171,9 +173,11 @@ export default function UnidadDetailPage({
   // Para mostrar: negativo significa deuda del inquilino → lo mostramos positivo con "Adeuda"
   const inquilinoDebeAlquiler = saldoAlquilerRaw < 0
   const montoDeudaAlquiler    = Math.abs(saldoAlquilerRaw)
-  // saldoTotal: combinamos alquiler y expensas (ambos como deuda = positivo)
-  const deudaTotal = (inquilinoDebeAlquiler ? montoDeudaAlquiler : 0) + expensasPendientes
-  const saldoTotalAFavor = !inquilinoDebeAlquiler ? saldoAlquilerRaw - expensasPendientes : 0
+  // depósito pendiente como deuda adicional
+  const depositoDeuda = deposito > 0 && !depositoPagado ? deposito : 0
+  // saldoTotal: alquiler + expensas + depósito pendiente
+  const deudaTotal = (inquilinoDebeAlquiler ? montoDeudaAlquiler : 0) + expensasPendientes + depositoDeuda
+  const saldoTotalAFavor = !inquilinoDebeAlquiler ? saldoAlquilerRaw - expensasPendientes - depositoDeuda : 0
   const dias          = contrato ? diasHastaFin(contrato.fecha_fin) : null
 
   return (
@@ -361,12 +365,13 @@ export default function UnidadDetailPage({
       )}
 
       {/* Expensas y gastos */}
-      {contrato && gastosUnidad.length > 0 && (
+      {contrato && (
         <Card>
           <CardHeader>
             <CardTitle>Expensas y gastos ({gastosUnidad.length})</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
+            {gastosUnidad.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -378,13 +383,15 @@ export default function UnidadDetailPage({
               </TableHeader>
               <TableBody>
                 {gastosUnidad.map((g: any) => {
-                  // Usar monto asignado a esta unidad si existe, sino el monto total
+                  const tipoNombre = Array.isArray(g.tipos_gasto_propiedad)
+                    ? g.tipos_gasto_propiedad[0]?.nombre
+                    : g.tipos_gasto_propiedad?.nombre
                   const detalle = (g.detalle_gastos_unidad ?? []).find((d: any) => d.unidad_id === id)
                   const monto = detalle?.monto_asignado ?? g.monto
                   return (
                     <TableRow key={g.id}>
                       <TableCell className="font-mono">{g.periodo}</TableCell>
-                      <TableCell>{g.tipos_gasto_propiedad?.nombre ?? '—'}</TableCell>
+                      <TableCell>{tipoNombre ?? '—'}</TableCell>
                       <TableCell className="text-muted-foreground text-xs">—</TableCell>
                       <TableCell className="text-right font-medium">{formatCurrency(monto)}</TableCell>
                     </TableRow>
@@ -392,6 +399,9 @@ export default function UnidadDetailPage({
                 })}
               </TableBody>
             </Table>
+            ) : (
+              <p className="p-4 text-sm text-muted-foreground">Sin gastos registrados para esta propiedad en el período del contrato.</p>
+            )}
           </CardContent>
         </Card>
       )}
