@@ -113,24 +113,19 @@ export default function UnidadDetailPage({
             .order('periodo', { ascending: false })
           setPagos(pagosData || [])
 
-          // ── Gastos imputables desde el inicio del contrato ─────────────
+          // ── Gastos de la propiedad desde el inicio del contrato ───────────
           const periodoInicio = contratoData.fecha_inicio.substring(0, 7)
           const { data: gastosData } = await supabase
-            .from('detalle_gastos_unidad')
+            .from('gastos_mensuales')
             .select(`
-              monto_asignado,
-              gastos_mensuales(
-                periodo, propiedad_id,
-                tipos_gasto_propiedad(nombre)
-              )
+              id, periodo, monto,
+              tipos_gasto_propiedad(nombre),
+              detalle_gastos_unidad(monto_asignado, unidad_id)
             `)
-            .eq('unidad_id', id)
-          const gastosFiltrados = (gastosData ?? [])
-            .filter((g: any) => (g.gastos_mensuales?.periodo ?? '') >= periodoInicio)
-            .sort((a: any, b: any) =>
-              (b.gastos_mensuales?.periodo ?? '').localeCompare(a.gastos_mensuales?.periodo ?? '')
-            )
-          setGastosUnidad(gastosFiltrados)
+            .eq('propiedad_id', unidadRes.data!.propiedad_id)
+            .gte('periodo', periodoInicio)
+            .order('periodo', { ascending: false })
+          setGastosUnidad(gastosData ?? [])
         }
       }
 
@@ -365,11 +360,11 @@ export default function UnidadDetailPage({
         </Card>
       )}
 
-      {/* Gastos a cargo del inquilino */}
+      {/* Expensas y gastos */}
       {contrato && gastosUnidad.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Gastos a cargo del inquilino ({gastosUnidad.length})</CardTitle>
+            <CardTitle>Expensas y gastos ({gastosUnidad.length})</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
@@ -377,17 +372,24 @@ export default function UnidadDetailPage({
                 <TableRow>
                   <TableHead>Período</TableHead>
                   <TableHead>Tipo</TableHead>
-                  <TableHead className="text-right">Monto asignado</TableHead>
+                  <TableHead>Comprobante</TableHead>
+                  <TableHead className="text-right">Monto</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {gastosUnidad.map((g: any, i: number) => (
-                  <TableRow key={g.id ?? i}>
-                    <TableCell className="font-mono">{g.gastos_mensuales?.periodo ?? '—'}</TableCell>
-                    <TableCell>{g.gastos_mensuales?.tipos_gasto_propiedad?.nombre ?? '—'}</TableCell>
-                    <TableCell className="text-right font-medium">{formatCurrency(g.monto_asignado)}</TableCell>
-                  </TableRow>
-                ))}
+                {gastosUnidad.map((g: any) => {
+                  // Usar monto asignado a esta unidad si existe, sino el monto total
+                  const detalle = (g.detalle_gastos_unidad ?? []).find((d: any) => d.unidad_id === id)
+                  const monto = detalle?.monto_asignado ?? g.monto
+                  return (
+                    <TableRow key={g.id}>
+                      <TableCell className="font-mono">{g.periodo}</TableCell>
+                      <TableCell>{g.tipos_gasto_propiedad?.nombre ?? '—'}</TableCell>
+                      <TableCell className="text-muted-foreground text-xs">—</TableCell>
+                      <TableCell className="text-right font-medium">{formatCurrency(monto)}</TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           </CardContent>
