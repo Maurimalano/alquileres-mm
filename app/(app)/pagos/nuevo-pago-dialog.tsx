@@ -327,8 +327,8 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario', defa
       )
     }
 
-    // 4b. Si la imputación incluye depósito, marcarlo como pagado en el contrato
-    if (imputacion?.some(i => i.label === 'Depósito en garantía' && i.monto > 0)) {
+    // 4b. Si el pago incluye el depósito, marcarlo como pagado
+    if (estadoCuenta && estadoCuenta.deposito > 0 && totalMonto >= estadoCuenta.deposito) {
       await supabase.from('contratos').update({ deposito_pagado: true }).eq('id', form.contrato_id)
     }
 
