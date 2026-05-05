@@ -11,6 +11,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import { NuevoPagoDialog } from './nuevo-pago-dialog'
 import { createClient } from '@/lib/supabase/client'
 import type { Pago } from '@/types/database'
@@ -49,6 +50,11 @@ export default function PagosPage() {
   const [pagos, setPagos] = useState<any[]>([])
   const [contratos, setContratos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [filtroFechaDesde, setFiltroFechaDesde] = useState('')
+  const [filtroFechaHasta, setFiltroFechaHasta] = useState('')
+  const [filtroPropiedad, setFiltroPropiedad]   = useState('')
+  const [filtroUnidad, setFiltroUnidad]         = useState('')
+  const [filtroInquilino, setFiltroInquilino]   = useState('')
 
   useEffect(() => {
     async function fetchData() {
@@ -81,16 +87,47 @@ export default function PagosPage() {
     return <div>Cargando...</div>
   }
 
+  const pagosFiltrados = pagos.filter(p => {
+    const contrato = (p as any).contratos
+    const inquilino = contrato?.inquilinos
+    if (filtroFechaDesde && p.fecha_pago && p.fecha_pago < filtroFechaDesde) return false
+    if (filtroFechaHasta && p.fecha_pago && p.fecha_pago > filtroFechaHasta) return false
+    if (filtroInquilino) {
+      const nombre = `${inquilino?.nombre ?? ''} ${inquilino?.apellido ?? ''}`.toLowerCase()
+      if (!nombre.includes(filtroInquilino.toLowerCase())) return false
+    }
+    if (filtroPropiedad) {
+      const cu: any[] = contrato?.contrato_unidades ?? []
+      const match = cu.some(e => e.unidades?.propiedades?.nombre?.toLowerCase().includes(filtroPropiedad.toLowerCase()))
+      if (!match) return false
+    }
+    if (filtroUnidad) {
+      const cu: any[] = contrato?.contrato_unidades ?? []
+      const match = cu.some(e => String(e.unidades?.numero ?? '').toLowerCase().includes(filtroUnidad.toLowerCase()))
+      if (!match) return false
+    }
+    return true
+  })
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Cobranza</h1>
           <p className="text-muted-foreground">
-            {pagos?.length ?? 0} cobranza{(pagos?.length ?? 0) !== 1 ? 's' : ''} registrada{(pagos?.length ?? 0) !== 1 ? 's' : ''}
+            {pagosFiltrados.length} cobranza{pagosFiltrados.length !== 1 ? 's' : ''} registrada{pagosFiltrados.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <NuevoPagoDialog contratos={contratos ?? []} />
+        <NuevoPagoDialog contratos={contratos ?? []} defaultOpen={true} />
+      </div>
+
+      {/* Filtros */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <Input type="date" placeholder="Fecha desde" value={filtroFechaDesde} onChange={e => setFiltroFechaDesde(e.target.value)} />
+        <Input type="date" placeholder="Fecha hasta" value={filtroFechaHasta} onChange={e => setFiltroFechaHasta(e.target.value)} />
+        <Input placeholder="Propiedad" value={filtroPropiedad} onChange={e => setFiltroPropiedad(e.target.value)} />
+        <Input placeholder="Unidad" value={filtroUnidad} onChange={e => setFiltroUnidad(e.target.value)} />
+        <Input placeholder="Inquilino" value={filtroInquilino} onChange={e => setFiltroInquilino(e.target.value)} />
       </div>
 
       <div className="rounded-md border">
@@ -106,8 +143,8 @@ export default function PagosPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {pagos && pagos.length > 0 ? (
-              pagos.map((p) => {
+            {pagosFiltrados.length > 0 ? (
+              pagosFiltrados.map((p) => {
                 const badge = estadoBadge[p.estado]
                 const contrato = (p as any).contratos
                 const inquilino = contrato?.inquilinos

@@ -35,6 +35,7 @@ interface Contrato {
 interface Props {
   contratos: Contrato[]
   locadorNombre?: string
+  defaultOpen?: boolean
 }
 
 type TipoMedio = 'efectivo' | 'transferencia' | 'cheque' | 'retencion'
@@ -89,9 +90,9 @@ interface EstadoCuenta {
   total:               number
 }
 
-export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario' }: Props) {
+export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario', defaultOpen = false }: Props) {
   const router = useRouter()
-  const [open, setOpen]               = useState(false)
+  const [open, setOpen]               = useState(defaultOpen)
   const [loading, setLoading]         = useState(false)
   const [estadoCuenta, setEstadoCuenta]   = useState<EstadoCuenta | null>(null)
   const [loadingEstado, setLoadingEstado] = useState(false)
