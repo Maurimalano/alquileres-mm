@@ -22,7 +22,11 @@
       "PowerShell(Stop-Process *2)",
       "Bash(Remove-Item -Recurse -Force \"C:\\\\Users\\\\mmala\\\\Downloads\\\\alquileresmm\\\\alquileres-mm\\\\app\\\\\\(app\\)\\\\servicios\")",
       "Bash(Remove-Item -Recurse -Force \"C:\\\\Users\\\\mmala\\\\Downloads\\\\alquileresmm\\\\alquileres-mm\\\\app\\\\\\(app\\)\\\\expensas\")",
-      "Bash(Get-Content \"C:\\\\Users\\\\mmala\\\\Downloads\\\\alquileresmm\\\\alquileres-mm\\\\.next\\\\dev\\\\logs\\\\next-development.log\" -Tail 15)"
+      "Bash(Get-Content \"C:\\\\Users\\\\mmala\\\\Downloads\\\\alquileresmm\\\\alquileres-mm\\\\.next\\\\dev\\\\logs\\\\next-development.log\" -Tail 15)",
+      "Bash(git commit *)",
+      "Bash(git config *)",
+      "Bash(git push *)",
+      "Bash(git add *)"
     ]
   }
 }

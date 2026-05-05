@@ -311,7 +311,7 @@ export default function UnidadDetailPage({
               <div className="rounded-md border p-3 space-y-1">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide">Expensas pendientes</p>
                 <p className={`text-xl font-bold ${totalGastosUnidad === 0 ? 'text-green-600' : 'text-destructive'}`}>
-                  {totalGastosUnidad === 0 ? 'Al día' : `-${formatCurrency(totalGastosUnidad)}`}
+                  {totalGastosUnidad === 0 ? 'Al día' : formatCurrency(totalGastosUnidad)}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {totalGastosUnidad === 0 ? 'Sin deuda' : 'Sin cobrar'}
