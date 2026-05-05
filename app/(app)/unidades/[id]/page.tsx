@@ -269,7 +269,7 @@ export default function UnidadDetailPage({
               {/* Depósito */}
               {deposito > 0 && (
                 <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Depósito</span>
+                  <span className="text-muted-foreground">Depósito en Garantía</span>
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{formatCurrency(deposito)}</span>
                     <Badge variant={depositoPagado ? 'default' : 'destructive'}>

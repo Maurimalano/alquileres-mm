@@ -327,6 +327,11 @@ export function NuevoPagoDialog({ contratos, locadorNombre = 'Propietario', defa
       )
     }
 
+    // 4b. Si la imputación incluye depósito, marcarlo como pagado en el contrato
+    if (imputacion?.some(i => i.label === 'Depósito en garantía' && i.monto > 0)) {
+      await supabase.from('contratos').update({ deposito_pagado: true }).eq('id', form.contrato_id)
+    }
+
     // 5. Crear recibo
     if (pago && numero) {
       const c   = contratoSeleccionado
