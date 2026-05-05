@@ -114,20 +114,16 @@ export default function UnidadDetailPage({
             .order('periodo', { ascending: false })
           setPagos(pagosData || [])
 
-          // ── Gastos de la propiedad desde el inicio del contrato ───────────
-          const periodoInicio = contratoData.fecha_inicio.substring(0, 7)
-          const { data: gastosData } = await supabase
-            .from('gastos')
-            .select(`
-              id, periodo, monto, tipo_gasto, numero_comprobante,
-              gasto_unidades(monto, unidad_id)
-            `)
-            .eq('propiedad_id', unidadRes.data!.propiedad_id)
-            .gte('periodo', periodoInicio)
-            .order('periodo', { ascending: false })
-          setGastosUnidad(gastosData ?? [])
         }
       }
+
+      // ── Gastos de la propiedad (siempre, independiente del contrato) ──────
+      const { data: gastosData } = await supabase
+        .from('gastos')
+        .select('id, periodo, monto, tipo_gasto, numero_comprobante')
+        .eq('propiedad_id', unidadRes.data!.propiedad_id)
+        .order('periodo', { ascending: false })
+      setGastosUnidad(gastosData ?? [])
 
       // ── Expensas pendientes para esta unidad ─────────────────────────────
       const { data: expensasData } = await supabase
@@ -182,9 +178,11 @@ export default function UnidadDetailPage({
 
   // depósito pendiente como deuda adicional
   const depositoDeuda = deposito > 0 && !depositoPagado ? deposito : 0
-  // saldoTotal: alquiler + expensas + depósito pendiente
-  const deudaTotal = (inquilinoDebeAlquiler ? montoDeudaAlquiler : 0) + expensasPendientes + depositoDeuda
-  const saldoTotalAFavor = !inquilinoDebeAlquiler ? saldoAlquilerRaw - expensasPendientes - depositoDeuda : 0
+  // suma de gastos de la unidad (usa monto por unidad si existe, sino 0)
+  const totalGastosUnidad = gastosUnidad.reduce((s, g) => s + (g.monto ?? 0), 0)
+  // saldoTotal: alquiler + gastos unidad + depósito pendiente
+  const deudaTotal = (inquilinoDebeAlquiler ? montoDeudaAlquiler : 0) + totalGastosUnidad + depositoDeuda
+  const saldoTotalAFavor = !inquilinoDebeAlquiler ? saldoAlquilerRaw - totalGastosUnidad - depositoDeuda : 0
   const dias          = contrato ? diasHastaFin(contrato.fecha_fin) : null
 
   return (
@@ -312,11 +310,11 @@ export default function UnidadDetailPage({
               {/* Expensas pendientes */}
               <div className="rounded-md border p-3 space-y-1">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide">Expensas pendientes</p>
-                <p className={`text-xl font-bold ${expensasPendientes === 0 ? 'text-green-600' : 'text-destructive'}`}>
-                  {expensasPendientes === 0 ? 'Al día' : `-${formatCurrency(expensasPendientes)}`}
+                <p className={`text-xl font-bold ${totalGastosUnidad === 0 ? 'text-green-600' : 'text-destructive'}`}>
+                  {totalGastosUnidad === 0 ? 'Al día' : `-${formatCurrency(totalGastosUnidad)}`}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {expensasPendientes === 0 ? 'Sin deuda' : 'Sin cobrar'}
+                  {totalGastosUnidad === 0 ? 'Sin deuda' : 'Sin cobrar'}
                 </p>
               </div>
 
